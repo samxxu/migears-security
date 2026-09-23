@@ -18,8 +18,8 @@ class MiAuth implements AuthInterface
 {
     public const VERSION = '2.0.0';
 
-    private const string DEFAULT_SESSION_KEY = '__tinyauth_user_id';
-    private const string DEFAULT_COOKIE_NAME = '__tinyauth_remember';
+    private const string DEFAULT_SESSION_KEY = '__migears_user_id';
+    private const string DEFAULT_COOKIE_NAME = '__migears_remember';
     private const int DEFAULT_REMEMBER_TTL = 2592000; // 30 days
 
     /** @var TUser|null */
@@ -132,6 +132,8 @@ class MiAuth implements AuthInterface
                 $this->currentUser = $user;
                 return $user;
             }
+            // User no longer exists — drop the stale session key
+            ($this->sessionRemove)($this->sessionKey);
         }
 
         // Fall back to remember-me Cookie
@@ -181,7 +183,7 @@ class MiAuth implements AuthInterface
     {
         if ($this->encryptionKey === '') throw SecurityException::missingEncryptionKey();
 
-        $data = json_encode(['uid' => $userId, 'exp' => time() + $this->rememberTtl, 'tok' => Token::generate(16)]);
+        $data = json_encode(['uid' => $userId, 'exp' => time() + $this->rememberTtl]);
         if ($data === false) throw new SecurityException('Failed to encode remember-me data.');
 
         ($this->cookieSet)($this->cookieName, $this->encrypt($data, $this->encryptionKey), time() + $this->rememberTtl);

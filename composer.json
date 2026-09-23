@@ -1,9 +1,17 @@
 {
     "name": "migears/security",
-    "description": "TinyGears Security - Security toolkit with TinyAuth classic implementation",
+    "description": "miGears Security - Security toolkit with MiAuth classic implementation",
     "type": "library",
     "license": "MIT",
-    "keywords": ["security", "auth", "password", "token", "csrf", "migears"],
+    "version": "2.0.0",
+    "keywords": [
+        "security",
+        "auth",
+        "password",
+        "token",
+        "csrf",
+        "migears"
+    ],
     "require": {
         "php": "^8.1",
         "ext-openssl": "*"
@@ -24,5 +32,8 @@
     "config": {
         "sort-packages": true
     },
-    "minimum-stability": "stable"
+    "minimum-stability": "stable",
+    "scripts": {
+        "test": "phpunit"
+    }
 }

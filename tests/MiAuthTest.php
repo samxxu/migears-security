@@ -142,8 +142,8 @@ final class MiAuthTest extends TestCase
 
         $auth->login($user);
 
-        self::assertArrayHasKey('__tinyauth_user_id', $this->session);
-        self::assertSame('1', $this->session['__tinyauth_user_id']);
+        self::assertArrayHasKey('__migears_user_id', $this->session);
+        self::assertSame('1', $this->session['__migears_user_id']);
     }
 
     public function testIsLoggedInAfterLogin(): void
@@ -180,7 +180,7 @@ final class MiAuthTest extends TestCase
         $auth->logout();
 
         self::assertFalse($auth->isLoggedIn());
-        self::assertArrayNotHasKey('__tinyauth_user_id', $this->session);
+        self::assertArrayNotHasKey('__migears_user_id', $this->session);
     }
 
     public function testLogoutClearsRememberCookie(): void
@@ -188,11 +188,11 @@ final class MiAuthTest extends TestCase
         $auth = $this->createAuth();
         $auth->login($this->users['1'], remember: true);
 
-        self::assertArrayHasKey('__tinyauth_remember', $this->cookies);
+        self::assertArrayHasKey('__migears_remember', $this->cookies);
 
         $auth->logout();
 
-        self::assertArrayNotHasKey('__tinyauth_remember', $this->cookies);
+        self::assertArrayNotHasKey('__migears_remember', $this->cookies);
     }
 
     public function testGetCurrentUserReturnsNullBeforeLogin(): void
@@ -209,8 +209,8 @@ final class MiAuthTest extends TestCase
 
         $auth->login($this->users['1'], remember: true);
 
-        self::assertArrayHasKey('__tinyauth_remember', $this->cookies);
-        self::assertNotEmpty($this->cookies['__tinyauth_remember']);
+        self::assertArrayHasKey('__migears_remember', $this->cookies);
+        self::assertNotEmpty($this->cookies['__migears_remember']);
     }
 
     public function testLoginWithoutRememberDoesNotSetCookie(): void
@@ -219,7 +219,7 @@ final class MiAuthTest extends TestCase
 
         $auth->login($this->users['1'], remember: false);
 
-        self::assertArrayNotHasKey('__tinyauth_remember', $this->cookies);
+        self::assertArrayNotHasKey('__migears_remember', $this->cookies);
     }
 
     public function testLoginRememberWithoutKeyThrows(): void
@@ -247,13 +247,13 @@ final class MiAuthTest extends TestCase
         self::assertSame('1', $user->getId());
         self::assertTrue($auth2->isLoggedIn());
         // Session should be restored
-        self::assertArrayHasKey('__tinyauth_user_id', $this->session);
+        self::assertArrayHasKey('__migears_user_id', $this->session);
     }
 
     public function testRememberMeWithInvalidCookie(): void
     {
         // Set a garbage cookie
-        $this->cookies['__tinyauth_remember'] = 'invalid.cookie.value';
+        $this->cookies['__migears_remember'] = 'invalid.cookie.value';
 
         $auth = $this->createAuth();
         $user = $auth->getCurrentUser();
@@ -261,7 +261,7 @@ final class MiAuthTest extends TestCase
         self::assertNull($user);
         self::assertFalse($auth->isLoggedIn());
         // Cookie should be cleaned up
-        self::assertArrayNotHasKey('__tinyauth_remember', $this->cookies);
+        self::assertArrayNotHasKey('__migears_remember', $this->cookies);
     }
 
     public function testRememberMeWithTamperedCookie(): void
@@ -270,17 +270,17 @@ final class MiAuthTest extends TestCase
         $auth1 = $this->createAuth('secret-key-a');
         $auth1->login($this->users['1'], remember: true);
 
-        $cookieValue = $this->cookies['__tinyauth_remember'];
+        $cookieValue = $this->cookies['__migears_remember'];
 
         // Now try to use that cookie with a different key (simulating tampering)
         $this->session = [];
-        $this->cookies = ['__tinyauth_remember' => $cookieValue];
+        $this->cookies = ['__migears_remember' => $cookieValue];
 
         $auth2 = $this->createAuth('different-key');
         $user = $auth2->getCurrentUser();
 
         self::assertNull($user);
-        self::assertArrayNotHasKey('__tinyauth_remember', $this->cookies);
+        self::assertArrayNotHasKey('__migears_remember', $this->cookies);
     }
 
     public function testRememberMeWithDeletedUser(): void
@@ -296,20 +296,20 @@ final class MiAuthTest extends TestCase
         $user = $auth2->getCurrentUser();
 
         self::assertNull($user);
-        self::assertArrayNotHasKey('__tinyauth_remember', $this->cookies);
+        self::assertArrayNotHasKey('__migears_remember', $this->cookies);
     }
 
     public function testRememberMeNoKeySkipsCookieCheck(): void
     {
         // Set some cookie value
-        $this->cookies['__tinyauth_remember'] = 'somevalue';
+        $this->cookies['__migears_remember'] = 'somevalue';
 
         $auth = $this->createAuth('');
         $user = $auth->getCurrentUser();
 
         self::assertNull($user);
         // Cookie should NOT be removed (we didn't even try)
-        self::assertArrayHasKey('__tinyauth_remember', $this->cookies);
+        self::assertArrayHasKey('__migears_remember', $this->cookies);
     }
 
     public function testUserWithIdProperty(): void
@@ -319,7 +319,7 @@ final class MiAuthTest extends TestCase
 
         $auth->login($user);
 
-        self::assertSame('42', $this->session['__tinyauth_user_id']);
+        self::assertSame('42', $this->session['__migears_user_id']);
     }
 
     public function testUserWithoutIdThrows(): void
@@ -350,7 +350,7 @@ final class MiAuthTest extends TestCase
         $auth->login($this->users['1']);
 
         self::assertArrayHasKey('custom_user_id', $this->session);
-        self::assertArrayNotHasKey('__tinyauth_user_id', $this->session);
+        self::assertArrayNotHasKey('__migears_user_id', $this->session);
     }
 
     public function testCustomCookieName(): void
@@ -370,19 +370,21 @@ final class MiAuthTest extends TestCase
         $auth->login($this->users['1'], remember: true);
 
         self::assertArrayHasKey('remember_me', $this->cookies);
-        self::assertArrayNotHasKey('__tinyauth_remember', $this->cookies);
+        self::assertArrayNotHasKey('__migears_remember', $this->cookies);
     }
 
     public function testSessionUserNotFound(): void
     {
         // Set a session for a non-existent user
-        $this->session['__tinyauth_user_id'] = '999';
+        $this->session['__migears_user_id'] = '999';
 
         $auth = $this->createAuth();
         $user = $auth->getCurrentUser();
 
         self::assertNull($user);
         self::assertFalse($auth->isLoggedIn());
+        // Stale session key for the deleted user should be cleaned up
+        self::assertArrayNotHasKey('__migears_user_id', $this->session);
     }
 
     public function testMultipleLoginCalls(): void

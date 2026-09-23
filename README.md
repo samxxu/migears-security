@@ -4,6 +4,10 @@
 
 > Security toolkit + MiAuth classic implementation. Zero mandatory dependencies, PHP 8.1+.
 
+> **Background**: miGears is the open-source successor of **TinyGears**, a
+> self-developed PHP framework. It was renamed and open-sourced recently because
+> the name *TinyGears* is already taken in the open-source community.
+
 ## Features
 
 - **Password** — Password hashing and verification (bcrypt, based on `password_hash`)
