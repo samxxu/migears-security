@@ -7,8 +7,7 @@
          executionOrder="random"
          failOnRisky="true"
          failOnWarning="true"
-         beStrictAboutOutputDuringTests="true"
-         beStrictAboutTodoAnnotatedTests="true">
+         beStrictAboutOutputDuringTests="true">
     <testsuites>
         <testsuite name="miGears Security Test Suite">
             <directory>tests</directory>
