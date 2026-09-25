@@ -22,8 +22,10 @@ final class Csrf
 {
     /**
      * Default CSRF token key used in storage.
+     *
+     * @var string
      */
-    private const string DEFAULT_KEY = '_csrf_token';
+    private const DEFAULT_KEY = '_csrf_token';
 
     /**
      * @param string $tokenKey   Key used to store the token in the session/storage

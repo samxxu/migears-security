@@ -17,13 +17,17 @@ final class Token
 {
     /**
      * Default token length in bytes (before hex encoding).
+     *
+     * @var int
      */
-    private const int DEFAULT_LENGTH = 32;
+    private const DEFAULT_LENGTH = 32;
 
     /**
      * Separator used in timestamped tokens: "token:timestamp".
+     *
+     * @var string
      */
-    private const string SEPARATOR = '.';
+    private const SEPARATOR = '.';
 
     /**
      * Generate a cryptographically secure random token.

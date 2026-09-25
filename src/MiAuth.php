@@ -18,9 +18,12 @@ class MiAuth implements AuthInterface
 {
     public const VERSION = '2.0.0';
 
-    private const string DEFAULT_SESSION_KEY = '__migears_user_id';
-    private const string DEFAULT_COOKIE_NAME = '__migears_remember';
-    private const int DEFAULT_REMEMBER_TTL = 2592000; // 30 days
+    /** @var string Default session key for the user id */
+    private const DEFAULT_SESSION_KEY = '__migears_user_id';
+    /** @var string Default remember-me cookie name */
+    private const DEFAULT_COOKIE_NAME = '__migears_remember';
+    /** @var int Default remember-me TTL in seconds (30 days) */
+    private const DEFAULT_REMEMBER_TTL = 2592000;
 
     /** @var TUser|null */
     private ?object $currentUser = null;

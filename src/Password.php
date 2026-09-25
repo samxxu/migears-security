@@ -16,13 +16,17 @@ final class Password
 {
     /**
      * Default hashing algorithm.
+     *
+     * @var string
      */
-    private const string ALGORITHM = PASSWORD_BCRYPT;
+    private const ALGORITHM = PASSWORD_BCRYPT;
 
     /**
      * Default bcrypt cost factor.
+     *
+     * @var int
      */
-    private const int COST = 12;
+    private const COST = 12;
 
     /**
      * Hash a plain-text password.
