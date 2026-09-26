@@ -36,6 +36,22 @@ final class TestUserWithProperty
     }
 }
 
+/**
+ * User stub whose getId() is not public — must NOT be invoked; falls back to the public property.
+ */
+final class TestUserWithPrivateGetter
+{
+    public function __construct(
+        public string $id,
+    ) {
+    }
+
+    private function getId(): string
+    {
+        return 'should-not-be-used';
+    }
+}
+
 final class MiAuthTest extends TestCase
 {
     private array $session = [];
@@ -121,7 +137,7 @@ final class MiAuthTest extends TestCase
         };
     }
 
-    private function createAuth(string $encryptionKey = 'test-secret-key'): MiAuth
+    private function createAuth(string $encryptionKey = 'test-secret-key', ?callable $sessionRegenerate = null): MiAuth
     {
         return new MiAuth(
             sessionGet: $this->sessionGet,
@@ -132,6 +148,7 @@ final class MiAuthTest extends TestCase
             cookieRemove: $this->cookieRemove,
             userLoader: $this->userLoader,
             encryptionKey: $encryptionKey,
+            sessionRegenerate: $sessionRegenerate,
         );
     }
 
@@ -441,5 +458,96 @@ final class MiAuthTest extends TestCase
 
         // After login, the user is cached, so loader should not be called
         self::assertSame(0, $callCount);
+    }
+
+    public function testLoginRegeneratesSession(): void
+    {
+        $regenerated = 0;
+        $auth = $this->createAuth(sessionRegenerate: function () use (&$regenerated): void {
+            $regenerated++;
+        });
+
+        $auth->login($this->users['1']);
+
+        self::assertSame(1, $regenerated);
+    }
+
+    public function testLoginRotatesSessionBeforeWritingUserId(): void
+    {
+        $order = [];
+        $sessionRef = &$this->session;
+
+        $auth = new MiAuth(
+            sessionGet: $this->sessionGet,
+            sessionSet: static function (string $key, string $value) use (&$sessionRef, &$order): void {
+                $order[] = 'set';
+                $sessionRef[$key] = $value;
+            },
+            sessionRemove: $this->sessionRemove,
+            cookieGet: $this->cookieGet,
+            cookieSet: $this->cookieSet,
+            cookieRemove: $this->cookieRemove,
+            userLoader: $this->userLoader,
+            encryptionKey: 'test',
+            sessionRegenerate: static function () use (&$order): void {
+                $order[] = 'regenerate';
+            },
+        );
+
+        $auth->login($this->users['1']);
+
+        // The ID must be rotated first, so the new session ID carries the authenticated state
+        self::assertSame(['regenerate', 'set'], $order);
+    }
+
+    public function testWithoutRegenerateCallableLoginStillWorks(): void
+    {
+        $auth = $this->createAuth();
+
+        $auth->login($this->users['1']);
+
+        self::assertSame('1', $auth->getCurrentUser()?->getId());
+    }
+
+    public function testLoginRememberWithoutKeyLeavesSessionUntouched(): void
+    {
+        $auth = $this->createAuth('');
+
+        try {
+            $auth->login($this->users['1'], remember: true);
+            self::fail('Expected SecurityException to be thrown.');
+        } catch (SecurityException) {
+            // expected
+        }
+
+        // A failed login must not leave the user half-logged-in
+        self::assertArrayNotHasKey('__migears_user_id', $this->session);
+        self::assertArrayNotHasKey('__migears_remember', $this->cookies);
+        self::assertFalse($auth->isLoggedIn());
+    }
+
+    public function testRememberMeRestoreRegeneratesSession(): void
+    {
+        $auth1 = $this->createAuth();
+        $auth1->login($this->users['1'], remember: true);
+
+        $this->session = [];
+
+        $regenerated = 0;
+        $auth2 = $this->createAuth(sessionRegenerate: function () use (&$regenerated): void {
+            $regenerated++;
+        });
+
+        self::assertNotNull($auth2->getCurrentUser());
+        self::assertSame(1, $regenerated);
+    }
+
+    public function testNonPublicGetIdIsNotInvoked(): void
+    {
+        $auth = $this->createAuth();
+
+        $auth->login(new TestUserWithPrivateGetter('7'));
+
+        self::assertSame('7', $this->session['__migears_user_id']);
     }
 }

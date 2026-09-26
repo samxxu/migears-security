@@ -37,10 +37,13 @@ class MiAuth implements AuthInterface
      * @param callable(string, string, int): void $cookieSet
      * @param callable(string): void            $cookieRemove
      * @param callable(string): ?TUser          $userLoader
-     * @param string                            $encryptionKey  Remember-me encryption key
-     * @param string                            $sessionKey     User ID key name in Session
-     * @param string                            $cookieName     Remember-me Cookie name
-     * @param int                               $rememberTtl    Remember-me TTL in seconds
+     * @param string                            $encryptionKey     Remember-me encryption key
+     * @param string                            $sessionKey        User ID key name in Session
+     * @param string                            $cookieName        Remember-me Cookie name
+     * @param int                               $rememberTtl       Remember-me TTL in seconds
+     * @param callable(): void|null             $sessionRegenerate Rotates the session ID when a session is established
+     *                                                             (e.g. session_regenerate_id(true)). Optional, but
+     *                                                             strongly recommended against session fixation.
      */
     public function __construct(
         private readonly mixed $sessionGet,
@@ -54,14 +57,18 @@ class MiAuth implements AuthInterface
         private readonly string $sessionKey = self::DEFAULT_SESSION_KEY,
         private readonly string $cookieName = self::DEFAULT_COOKIE_NAME,
         private readonly int $rememberTtl = self::DEFAULT_REMEMBER_TTL,
+        private readonly mixed $sessionRegenerate = null,
     ) {
     }
 
     /**
      * Creates a classic implementation using PHP's native $_SESSION + setcookie.
      *
+     * The remember-me Cookie is set with `HttpOnly`, `SameSite=Lax` and `Secure`
+     * (pass `cookieSecure => false` only for local HTTP development).
+     *
      * @param callable(string): ?TUser $userLoader
-     * @param array{sessionKey?: string, cookieName?: string, rememberTtl?: int} $options
+     * @param array{sessionKey?: string, cookieName?: string, rememberTtl?: int, cookieSecure?: bool} $options
      * @return self<TUser>
      */
     public static function classic(callable $userLoader, string $encryptionKey = '', array $options = []): self
@@ -69,6 +76,8 @@ class MiAuth implements AuthInterface
         $ensureSession = static function (): void {
             if (session_status() !== PHP_SESSION_ACTIVE) session_start();
         };
+
+        $cookieSecure = $options['cookieSecure'] ?? true;
 
         return new self(
             sessionGet: static function (string $key) use ($ensureSession): ?string {
@@ -84,17 +93,33 @@ class MiAuth implements AuthInterface
                 unset($_SESSION[$key]);
             },
             cookieGet: static fn(string $name): ?string => isset($_COOKIE[$name]) ? (string) $_COOKIE[$name] : null,
-            cookieSet: static function (string $name, string $value, int $expire): void {
-                setcookie($name, $value, ['expires' => $expire, 'path' => '/', 'httponly' => true, 'samesite' => 'Lax']);
+            cookieSet: static function (string $name, string $value, int $expire) use ($cookieSecure): void {
+                setcookie($name, $value, [
+                    'expires' => $expire,
+                    'path' => '/',
+                    'secure' => $cookieSecure,
+                    'httponly' => true,
+                    'samesite' => 'Lax',
+                ]);
             },
-            cookieRemove: static function (string $name): void {
-                setcookie($name, '', ['expires' => time() - 3600, 'path' => '/', 'httponly' => true, 'samesite' => 'Lax']);
+            cookieRemove: static function (string $name) use ($cookieSecure): void {
+                setcookie($name, '', [
+                    'expires' => time() - 3600,
+                    'path' => '/',
+                    'secure' => $cookieSecure,
+                    'httponly' => true,
+                    'samesite' => 'Lax',
+                ]);
             },
             userLoader: $userLoader,
             encryptionKey: $encryptionKey,
             sessionKey: $options['sessionKey'] ?? self::DEFAULT_SESSION_KEY,
             cookieName: $options['cookieName'] ?? self::DEFAULT_COOKIE_NAME,
             rememberTtl: $options['rememberTtl'] ?? self::DEFAULT_REMEMBER_TTL,
+            sessionRegenerate: static function () use ($ensureSession): void {
+                $ensureSession();
+                session_regenerate_id(true);
+            },
         );
     }
 
@@ -102,6 +127,12 @@ class MiAuth implements AuthInterface
     public function login(object $user, bool $remember = false): void
     {
         $userId = $this->extractUserId($user);
+
+        // Validate before touching any state: a failure must not half-login the user
+        if ($remember && $this->encryptionKey === '') throw SecurityException::missingEncryptionKey();
+
+        $this->regenerateSession();
+
         ($this->sessionSet)($this->sessionKey, $userId);
         $this->currentUser = $user;
         $this->resolved = true;
@@ -176,9 +207,21 @@ class MiAuth implements AuthInterface
             return false;
         }
 
+        $this->regenerateSession();
+
         ($this->sessionSet)($this->sessionKey, $userId);
         $this->currentUser = $user;
         return true;
+    }
+
+    /**
+     * Rotate the session ID so a pre-planted (fixed) session cannot become authenticated.
+     *
+     * No-op when no regeneration callable was supplied.
+     */
+    private function regenerateSession(): void
+    {
+        if ($this->sessionRegenerate !== null) ($this->sessionRegenerate)();
     }
 
     /** @throws SecurityException */
@@ -195,7 +238,8 @@ class MiAuth implements AuthInterface
     /** @throws SecurityException */
     private function extractUserId(object $user): string
     {
-        if (method_exists($user, 'getId')) return (string) $user->getId();
+        // is_callable() — unlike method_exists() — ignores non-public methods
+        if (is_callable([$user, 'getId'])) return (string) $user->getId();
         if (isset($user->id)) return (string) $user->id;
         if ($user instanceof \ArrayAccess && isset($user['id'])) return (string) $user['id'];
         throw new SecurityException('Cannot extract user ID: object must have getId(), ->id, or [\'id\'].');
@@ -207,8 +251,11 @@ class MiAuth implements AuthInterface
     private function encrypt(string $plaintext, string $key): string
     {
         $key = hash('sha256', $key, true);
-        $iv = openssl_random_pseudo_bytes(openssl_cipher_iv_length('aes-256-cbc'));
-        if ($iv === false) throw new SecurityException('Failed to generate IV for encryption.');
+        try {
+            $iv = random_bytes(openssl_cipher_iv_length('aes-256-cbc'));
+        } catch (\Throwable $e) {
+            throw new SecurityException('Failed to generate IV for encryption.', 0, $e);
+        }
 
         $ciphertext = openssl_encrypt($plaintext, 'aes-256-cbc', $key, OPENSSL_RAW_DATA, $iv);
         if ($ciphertext === false) throw new SecurityException('Encryption failed.');

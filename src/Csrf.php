@@ -9,14 +9,21 @@ use MiGears\Security\Exception\SecurityException;
 /**
  * CSRF (Cross-Site Request Forgery) protection.
  *
- * Generates and validates CSRF tokens. Token storage is
- * abstracted via a simple array-access / closure pattern
- * so the caller controls persistence (session, cache, etc.).
+ * Generates and validates CSRF tokens. Token storage is abstracted
+ * through plain callables, so the caller controls persistence
+ * (session, cache, etc.).
  *
  * Usage:
- *   $csrf = new Csrf(session_storage: [$session, 'get'], ...);
- *   $token = $csrf->generate();
- *   $csrf->validate($userSubmittedToken);
+ *   $csrf = new Csrf('_csrf_token', 32);
+ *
+ *   $token = $csrf->generate(
+ *       fn(string $key, string $value) => $_SESSION[$key] = $value
+ *   );
+ *
+ *   $csrf->validate(
+ *       $_POST['_csrf_token'] ?? '',
+ *       fn(string $key): ?string => $_SESSION[$key] ?? null
+ *   );
  */
 final class Csrf
 {

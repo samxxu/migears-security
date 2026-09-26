@@ -37,7 +37,7 @@ Requirements:
 ```php
 use MiGears\Security\Password;
 
-// Hash
+// Hash (bcrypt, cost 12 by default; pass ['algo' => PASSWORD_ARGON2ID] to override)
 $hash = Password::hash('mysecret');
 
 // Verify
@@ -55,6 +55,7 @@ if (Password::needsRehash($hash)) {
 
 ```php
 use MiGears\Security\Token;
+use MiGears\Security\Exception\SecurityException;
 
 // Generate a random token
 $token = Token::generate(); // 64-character hex string
@@ -79,6 +80,7 @@ if (Token::equals($storedToken, $userToken)) {
 
 ```php
 use MiGears\Security\Csrf;
+use MiGears\Security\Exception\SecurityException;
 
 $csrf = new Csrf();
 
@@ -171,6 +173,18 @@ if ($auth->isLoggedIn()) {
 $auth->logout();
 ```
 
+The remember-me Cookie is issued with `HttpOnly`, `SameSite=Lax` and `Secure`, and the session
+ID is rotated on every login (`session_regenerate_id(true)`) to prevent session fixation.
+Pass `cookieSecure => false` only when developing over plain HTTP locally:
+
+```php
+$auth = MiAuth::classic(
+    userLoader: fn(string $id): ?object => User::find($id),
+    encryptionKey: 'your-secret-key',
+    options: ['cookieSecure' => false],
+);
+```
+
 ### Custom Storage
 
 MiAuth abstracts all I/O through callables and does not depend on any global variables:
@@ -182,6 +196,7 @@ $auth = new MiAuth(
     sessionGet: fn(string $key): ?string => $redis->get("session:$sid:$key"),
     sessionSet: fn(string $key, string $val) => $redis->set("session:$sid:$key", $val),
     sessionRemove: fn(string $key) => $redis->del("session:$sid:$key"),
+    sessionRegenerate: fn() => session_regenerate_id(true),
     cookieGet: fn(string $name): ?string => $request->cookies->get($name),
     cookieSet: fn(string $name, string $val, int $exp) => $response->headers->setCookie(...),
     cookieRemove: fn(string $name) => $response->headers->clearCookie($name),
@@ -189,6 +204,9 @@ $auth = new MiAuth(
     encryptionKey: 'your-secret-key',
 );
 ```
+
+The `cookieSet` callable is responsible for the Cookie flags; include `Secure`, `HttpOnly`
+and `SameSite` there when the store is a browser session.
 
 ### Implementing Custom AuthInterface
 
@@ -252,7 +270,7 @@ composer require migears/security
 ```php
 use MiGears\Security\Password;
 
-// 哈希
+// 哈希（默认 bcrypt、cost 12；可用 ['algo' => PASSWORD_ARGON2ID] 覆盖算法）
 $hash = Password::hash('mysecret');
 
 // 验证
@@ -270,6 +288,7 @@ if (Password::needsRehash($hash)) {
 
 ```php
 use MiGears\Security\Token;
+use MiGears\Security\Exception\SecurityException;
 
 // 生成随机令牌
 $token = Token::generate(); // 64 字符十六进制
@@ -294,6 +313,7 @@ if (Token::equals($storedToken, $userToken)) {
 
 ```php
 use MiGears\Security\Csrf;
+use MiGears\Security\Exception\SecurityException;
 
 $csrf = new Csrf();
 
@@ -386,6 +406,17 @@ if ($auth->isLoggedIn()) {
 $auth->logout();
 ```
 
+remember-me Cookie 会带上 `HttpOnly`、`SameSite=Lax` 与 `Secure`，且每次登录都会轮换会话 ID
+（`session_regenerate_id(true)`）以防会话固定。仅在本地 HTTP 开发时传入 `cookieSecure => false`：
+
+```php
+$auth = MiAuth::classic(
+    userLoader: fn(string $id): ?object => User::find($id),
+    encryptionKey: 'your-secret-key',
+    options: ['cookieSecure' => false],
+);
+```
+
 ### 自定义存储
 
 MiAuth 通过 callable 抽象所有 I/O，不依赖任何全局变量：
@@ -397,6 +428,7 @@ $auth = new MiAuth(
     sessionGet: fn(string $key): ?string => $redis->get("session:$sid:$key"),
     sessionSet: fn(string $key, string $val) => $redis->set("session:$sid:$key", $val),
     sessionRemove: fn(string $key) => $redis->del("session:$sid:$key"),
+    sessionRegenerate: fn() => session_regenerate_id(true),
     cookieGet: fn(string $name): ?string => $request->cookies->get($name),
     cookieSet: fn(string $name, string $val, int $exp) => $response->headers->setCookie(...),
     cookieRemove: fn(string $name) => $response->headers->clearCookie($name),
@@ -404,6 +436,9 @@ $auth = new MiAuth(
     encryptionKey: 'your-secret-key',
 );
 ```
+
+Cookie 标志由 `cookieSet` 这个 callable 自行负责；当存储面向浏览器会话时，
+请在其中带上 `Secure`、`HttpOnly` 与 `SameSite`。
 
 ### 实现自定义 AuthInterface
 
