@@ -43,6 +43,60 @@ class SanitizerTest extends TestCase
         $this->assertSame('<p>Hello World</p>', $result);
     }
 
+    public function testStripTagsDropsJavascriptHrefOnAllowedTag(): void
+    {
+        $result = Sanitizer::stripTags('<a href="javascript:alert(1)">click</a>', '<a>');
+        $this->assertSame('<a>click</a>', $result);
+    }
+
+    public function testStripTagsDropsEventHandlerAttributes(): void
+    {
+        $this->assertSame('<p>hi</p>', Sanitizer::stripTags('<p onclick="steal()">hi</p>', '<p>'));
+        // src is a harmless relative URL and is kept; the handler is dropped
+        $this->assertSame('<img src="x">', Sanitizer::stripTags('<img src=x onerror=alert(1)>', '<img>'));
+    }
+
+    public function testStripTagsDropsStyleAndUnknownAttributes(): void
+    {
+        $this->assertSame('<p>hi</p>', Sanitizer::stripTags('<p align="center" style="color:red">hi</p>', '<p>'));
+    }
+
+    public function testStripTagsKeepsSafeAttributes(): void
+    {
+        $result = Sanitizer::stripTags('<a href="https://ok.example" title="ok">y</a>', '<a>');
+        $this->assertSame('<a href="https://ok.example" title="ok">y</a>', $result);
+    }
+
+    public function testStripTagsKeepsRelativeUrls(): void
+    {
+        $result = Sanitizer::stripTags('<a href="/local/path?a=1&amp;b=2">y</a>', '<a>');
+        $this->assertSame('<a href="/local/path?a=1&amp;b=2">y</a>', $result);
+    }
+
+    public function testStripTagsRejectsEncodedJavascriptScheme(): void
+    {
+        $this->assertSame('<a>y</a>', Sanitizer::stripTags('<a href="java&#115;cript:alert(1)">y</a>', '<a>'));
+        $this->assertSame('<a>y</a>', Sanitizer::stripTags("<a href=\"java\nscript:alert(1)\">y</a>", '<a>'));
+    }
+
+    public function testStripTagsRejectsDataAndVbscriptSchemes(): void
+    {
+        $this->assertSame('<img>', Sanitizer::stripTags('<img src="data:text/html;base64,PHN2Zz4=">', '<img>'));
+        $this->assertSame('<a>y</a>', Sanitizer::stripTags('<a href="vbscript:msgbox(1)">y</a>', '<a>'));
+    }
+
+    public function testStripTagsDropsSrcdocOnAllowedTag(): void
+    {
+        $this->assertSame('<iframe>x</iframe>', Sanitizer::stripTags('<iframe srcdoc="alert(1)">x</iframe>', '<iframe>'));
+    }
+
+    public function testStripTagsEscapesKeptAttributeValues(): void
+    {
+        // A quote smuggled into a value must not break out of the attribute
+        $result = Sanitizer::stripTags('<a href="/x" title=&#34;onmouseover=alert(1)&#34;>y</a>', '<a>');
+        $this->assertSame('<a href="/x" title="&quot;onmouseover=alert(1)&quot;">y</a>', $result);
+    }
+
     // --- email ---
 
     public function testEmailValid(): void
@@ -167,6 +221,35 @@ class SanitizerTest extends TestCase
     public function testFilenameNormalNameUnchanged(): void
     {
         $this->assertSame('document.pdf', Sanitizer::filename('document.pdf'));
+    }
+
+    public function testFilenameStripsWindowsPathTraversal(): void
+    {
+        $this->assertSame('cmd.exe', Sanitizer::filename('..\\..\\windows\\system32\\cmd.exe'));
+    }
+
+    public function testFilenameRejectsDotSegments(): void
+    {
+        $this->assertSame('', Sanitizer::filename('..'));
+        $this->assertSame('', Sanitizer::filename('.'));
+        $this->assertSame('', Sanitizer::filename('dir/..'));
+    }
+
+    public function testFilenameTrimsSurroundingWhitespace(): void
+    {
+        $this->assertSame('spaced.txt', Sanitizer::filename("  spaced.txt  "));
+    }
+
+    public function testFilenameKeepsInnerDots(): void
+    {
+        $this->assertSame('archive.tar.gz', Sanitizer::filename('archive.tar.gz'));
+        $this->assertSame('...', Sanitizer::filename('...'));
+    }
+
+    public function testFilenameEmptyInputReturnsEmptyString(): void
+    {
+        $this->assertSame('', Sanitizer::filename(''));
+        $this->assertSame('', Sanitizer::filename('/'));
     }
 
     // --- hasXssRisk ---

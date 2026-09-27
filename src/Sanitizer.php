@@ -20,6 +20,24 @@ namespace MiGears\Security;
 final class Sanitizer
 {
     /**
+     * Attributes kept on tags that survive strip_tags().
+     *
+     * Everything else is dropped — including every on* handler, style, srcdoc
+     * and formaction — because strip_tags() keeps attributes verbatim on the
+     * tags it lets through.
+     *
+     * @var list<string>
+     */
+    private const SAFE_ATTRIBUTES = ['href', 'src', 'alt', 'title', 'width', 'height'];
+
+    /**
+     * Schemes accepted in href and src attributes.
+     *
+     * @var list<string>
+     */
+    private const SAFE_SCHEMES = ['http', 'https', 'mailto', 'tel', 'ftp'];
+
+    /**
      * Escape a string for safe HTML output.
      *
      * Use this for any user-supplied content displayed in HTML.
@@ -33,12 +51,82 @@ final class Sanitizer
     /**
      * Strip all HTML and PHP tags from a string.
      *
+     * When allowable tags are given, their attributes are filtered too: only
+     * the attributes in SAFE_ATTRIBUTES survive, href/src must use an allowed
+     * scheme, and every on* handler, style, srcdoc, and formaction is removed.
+     * Without allowable tags nothing survives that could carry an attribute.
+     *
+     * This is still not an HTML purifier: it does not parse nesting, and output
+     * escaping remains the primary defence.
+     *
      * @param string $value Input string
      * @param string $allowableTags Optional list of allowed tags, e.g. '<p><a>'
      */
     public static function stripTags(string $value, string $allowableTags = ''): string
     {
-        return strip_tags($value, $allowableTags);
+        $stripped = strip_tags($value, $allowableTags);
+
+        if ($allowableTags === '') {
+            return $stripped;
+        }
+
+        return preg_replace_callback(
+            '/<([a-zA-Z][a-zA-Z0-9]*)\b([^>]*)>/',
+            static function (array $match): string {
+                $attributes = '';
+
+                if (preg_match_all(
+                    '/([a-zA-Z_:][-\w:.]*)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s"\'<>`]+)/',
+                    $match[2],
+                    $found,
+                    PREG_SET_ORDER
+                )) {
+                    foreach ($found as $attribute) {
+                        $name = strtolower($attribute[1]);
+                        // Decode first so an already-encoded value such as
+                        // href="?a=1&amp;b=2" is not escaped a second time.
+                        $attributeValue = html_entity_decode(
+                            trim($attribute[2], '"\''),
+                            ENT_QUOTES | ENT_HTML5,
+                            'UTF-8'
+                        );
+
+                        if (!in_array($name, self::SAFE_ATTRIBUTES, true)) {
+                            continue;
+                        }
+
+                        if (($name === 'href' || $name === 'src') && !self::isSafeUrl($attributeValue)) {
+                            continue;
+                        }
+
+                        $attributes .= sprintf(' %s="%s"', $name, htmlspecialchars($attributeValue, ENT_QUOTES, 'UTF-8'));
+                    }
+                }
+
+                return '<' . $match[1] . $attributes . '>';
+            },
+            $stripped
+        ) ?? $stripped;
+    }
+
+    /**
+     * Decide whether a URL attribute value can be kept.
+     *
+     * The scheme is read from a normalised copy — entities decoded and
+     * whitespace or control characters removed — so "java&#115;cript:" and
+     * "java\nscript:" are recognised as the javascript scheme.
+     */
+    private static function isSafeUrl(string $url): bool
+    {
+        $decoded = html_entity_decode($url, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $normalized = strtolower(preg_replace('/[\x00-\x20\x7F]+/', '', $decoded) ?? $decoded);
+
+        if (preg_match('#^([a-z][a-z0-9+.\-]*):#', $normalized, $scheme)) {
+            return in_array($scheme[1], self::SAFE_SCHEMES, true);
+        }
+
+        // No scheme at all: a relative URL
+        return true;
     }
 
     /**
@@ -150,16 +238,29 @@ final class Sanitizer
     /**
      * Sanitize a filename by removing path traversal and dangerous characters.
      *
+     * Both separators are treated as separators, so a traversal written for one
+     * platform cannot survive on the other. A name that reduces to "." or ".."
+     * is not a usable filename and returns an empty string.
+     *
      * Does NOT validate that the file exists — just cleans the name string.
      */
     public static function filename(string $filename): string
     {
+        // Treat Windows separators as separators everywhere
+        $filename = str_replace('\\', '/', $filename);
         // Remove path traversal
         $filename = basename($filename);
         // Remove null bytes
         $filename = str_replace("\0", '', $filename);
         // Remove control characters
         $filename = preg_replace('/[\x00-\x1F\x7F]/', '', $filename) ?? $filename;
+        $filename = trim($filename);
+
+        // "." and ".." survive basename() but must never be handed back as a name
+        if ($filename === '.' || $filename === '..') {
+            return '';
+        }
+
         return $filename;
     }
 
