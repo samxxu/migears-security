@@ -263,35 +263,4 @@ final class Sanitizer
 
         return $filename;
     }
-
-    /**
-     * Check if a string contains potential XSS patterns.
-     *
-     * This is a heuristic check, not a replacement for output escaping.
-     * Use it for early rejection of obviously malicious input.
-     */
-    public static function hasXssRisk(string $value): bool
-    {
-        $lower = strtolower($value);
-
-        $patterns = [
-            '/<script\b[^>]*>/i',           // <script>
-            '/javascript\s*:/i',            // javascript:
-            '/on\w+\s*=/i',                  // onload=, onclick=, etc.
-            '/<iframe\b[^>]*>/i',           // <iframe>
-            '/<object\b[^>]*>/i',           // <object>
-            '/<embed\b[^>]*>/i',            // <embed>
-            '/eval\s*\(/i',                  // eval(
-            '/document\.cookie/i',           // document.cookie
-            '/data\s*:\s*text\/html/i',      // data:text/html
-        ];
-
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $lower)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

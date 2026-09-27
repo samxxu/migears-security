@@ -251,37 +251,4 @@ class SanitizerTest extends TestCase
         $this->assertSame('', Sanitizer::filename(''));
         $this->assertSame('', Sanitizer::filename('/'));
     }
-
-    // --- hasXssRisk ---
-
-    public function testHasXssRiskScriptTag(): void
-    {
-        $this->assertTrue(Sanitizer::hasXssRisk('<script>alert(1)</script>'));
-    }
-
-    public function testHasXssRiskJavascriptProtocol(): void
-    {
-        $this->assertTrue(Sanitizer::hasXssRisk('<a href="javascript:alert(1)">'));
-    }
-
-    public function testHasXssRiskEventHandler(): void
-    {
-        $this->assertTrue(Sanitizer::hasXssRisk('<div onclick="alert(1)">'));
-    }
-
-    public function testHasXssRiskIframe(): void
-    {
-        $this->assertTrue(Sanitizer::hasXssRisk('<iframe src="evil.com">'));
-    }
-
-    public function testHasXssRiskSafeString(): void
-    {
-        $this->assertFalse(Sanitizer::hasXssRisk('Hello, world!'));
-        $this->assertFalse(Sanitizer::hasXssRisk('<p>Safe paragraph</p>'));
-    }
-
-    public function testHasXssRiskCaseInsensitive(): void
-    {
-        $this->assertTrue(Sanitizer::hasXssRisk('<SCRIPT>alert(1)</SCRIPT>'));
-    }
 }
