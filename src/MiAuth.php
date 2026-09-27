@@ -125,6 +125,8 @@ class MiAuth implements AuthInterface
      */
     public static function classic(callable $userLoader, string $encryptionKey = '', array $options = []): self
     {
+        self::assertKnownOptionKeys($options);
+
         $cookieSecure = $options['cookieSecure'] ?? true;
 
         $ensureSession = static function () use ($cookieSecure): void {
@@ -185,6 +187,22 @@ class MiAuth implements AuthInterface
             rememberStore: $options['rememberStore'] ?? null,
             rememberGrace: $options['rememberGrace'] ?? RememberMe::DEFAULT_GRACE,
         );
+    }
+
+    /**
+     * Reject misspelled option keys instead of silently falling back to defaults.
+     *
+     * @param array<string, mixed> $options
+     *
+     * @throws \InvalidArgumentException If $options contains an unknown key
+     */
+    private static function assertKnownOptionKeys(array $options): void
+    {
+        $known = ['sessionKey', 'cookieName', 'rememberTtl', 'cookieSecure', 'rememberStore', 'rememberGrace'];
+        $unknown = array_diff(array_keys($options), $known);
+        if ($unknown !== []) {
+            throw new \InvalidArgumentException('classic() received unknown option(s): ' . implode(', ', $unknown));
+        }
     }
 
     /** @param TUser $user */

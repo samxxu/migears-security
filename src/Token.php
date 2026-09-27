@@ -72,6 +72,10 @@ final class Token
      */
     public static function generateWithTtl(int $ttlSeconds, int $length = self::DEFAULT_LENGTH): string
     {
+        if ($ttlSeconds < 1) {
+            throw new \InvalidArgumentException('TTL must be at least 1 second.');
+        }
+
         $token = self::generate($length);
         $expiresAt = time() + $ttlSeconds;
 

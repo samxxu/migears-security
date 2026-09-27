@@ -84,7 +84,8 @@ if (Token::equals($storedToken, $userToken)) {
 ```
 
 Requesting a length below `Token::MIN_LENGTH` (16 bytes) raises a `SecurityException` rather than
-being silently widened to the default.
+being silently widened to the default. Passing a TTL below 1 second to `generateWithTtl()` raises
+an `InvalidArgumentException` instead of producing an already-expired token.
 
 ### CSRF Protection
 
@@ -215,6 +216,10 @@ $auth = MiAuth::classic(
     options: ['cookieSecure' => false],
 );
 ```
+
+`options` accepts only the documented keys (`sessionKey`, `cookieName`, `rememberTtl`,
+`cookieSecure`, `rememberStore`, `rememberGrace`); a misspelled key raises an
+`InvalidArgumentException` rather than silently falling back to the default.
 
 #### Revocable remember-me (PSR-16 store)
 
@@ -375,6 +380,8 @@ if (Token::equals($storedToken, $userToken)) {
 ```
 
 请求低于 `Token::MIN_LENGTH`（16 字节）的长度会抛 `SecurityException`，不再静默提升为默认值。
+向 `generateWithTtl()` 传入低于 1 秒的 TTL 会抛 `InvalidArgumentException`，而不是生成一个即
+已过期的令牌。
 
 ### CSRF 防护
 
@@ -501,6 +508,10 @@ $auth = MiAuth::classic(
     options: ['cookieSecure' => false],
 );
 ```
+
+`options` 仅接受文档列出的键（`sessionKey`、`cookieName`、`rememberTtl`、`cookieSecure`、
+`rememberStore`、`rememberGrace`）；拼错的键会抛 `InvalidArgumentException`，而不是静默
+退回默认值。
 
 #### 可撤销的 remember-me（PSR-16 存储）
 

@@ -152,6 +152,50 @@ final class MiAuthTest extends TestCase
         );
     }
 
+    public function testClassicAcceptsKnownOptions(): void
+    {
+        $auth = MiAuth::classic(
+            userLoader: $this->userLoader,
+            options: ['cookieSecure' => false, 'sessionKey' => 'custom_key'],
+        );
+
+        self::assertInstanceOf(MiAuth::class, $auth);
+    }
+
+    public function testClassicRejectsUnknownOptionKey(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        MiAuth::classic(
+            userLoader: $this->userLoader,
+            options: ['cookieSecur' => true], // typo'd key must not silently fall back
+        );
+    }
+
+    /**
+     * classic() binds the real $_SESSION superglobal, so it needs an isolated
+     * process to avoid polluting the other tests' callback-injected session.
+     *
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testClassicLoginWritesToRealSession(): void
+    {
+        $users = $this->users;
+        $auth = MiAuth::classic(
+            userLoader: static function (string $id) use ($users): ?TestUser {
+                return $users[$id] ?? null;
+            },
+        );
+
+        self::assertFalse($auth->isLoggedIn());
+
+        $auth->login($users['1']);
+
+        self::assertTrue($auth->isLoggedIn());
+        self::assertSame('1', $_SESSION['__migears_user_id'] ?? null);
+    }
+
     public function testLoginStoresUserIdInSession(): void
     {
         $auth = $this->createAuth();

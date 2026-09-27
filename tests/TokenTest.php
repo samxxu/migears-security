@@ -80,6 +80,13 @@ final class TokenTest extends TestCase
         self::assertLessThanOrEqual(time() + 3600, $expiresAt);
     }
 
+    public function testGenerateWithTtlRejectsNonPositiveTtl(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+
+        Token::generateWithTtl(0);
+    }
+
     public function testParseValidToken(): void
     {
         $timestamped = Token::generateWithTtl(3600);
