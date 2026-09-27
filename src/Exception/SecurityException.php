@@ -53,6 +53,14 @@ class SecurityException extends \RuntimeException
     }
 
     /**
+     * Create a new exception for a length argument below the supported minimum.
+     */
+    public static function lengthBelowMinimum(int $minimum): self
+    {
+        return new self('Length must be at least ' . $minimum . ' bytes.');
+    }
+
+    /**
      * Create a new exception for an invalid configuration value.
      */
     public static function invalidConfiguration(string $reason): self

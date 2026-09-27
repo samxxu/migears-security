@@ -6,6 +6,7 @@ namespace MiGears\Security\Tests;
 
 use PHPUnit\Framework\TestCase;
 use MiGears\Security\Csrf;
+use MiGears\Security\Token;
 use MiGears\Security\Exception\SecurityException;
 
 final class CsrfTest extends TestCase
@@ -130,6 +131,22 @@ final class CsrfTest extends TestCase
     public function testGetTokenKey(): void
     {
         $csrf = new Csrf(tokenKey: 'my_key');
+
+        self::assertSame('my_key', $csrf->getTokenKey());
+    }
+
+    public function testConstructorRejectsAShortTokenLength(): void
+    {
+        // A short length used to be widened silently by Token::generate()
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('at least 16');
+
+        new Csrf('my_key', 8);
+    }
+
+    public function testConstructorAcceptsTheMinimumTokenLength(): void
+    {
+        $csrf = new Csrf('my_key', Token::MIN_LENGTH);
 
         self::assertSame('my_key', $csrf->getTokenKey());
     }

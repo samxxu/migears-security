@@ -82,6 +82,9 @@ if (Token::equals($storedToken, $userToken)) {
 }
 ```
 
+Requesting a length below `Token::MIN_LENGTH` (16 bytes) raises a `SecurityException` rather than
+being silently widened to the default.
+
 ### CSRF Protection
 
 ```php
@@ -110,6 +113,10 @@ echo $csrf->htmlField(
     setter: fn(string $key, string $val) => $_SESSION[$key] = $val
 );
 ```
+
+A `Csrf` instance holds one long-lived token per storage key — the per-session model OWASP allows.
+Call `generate()` again when you want to rotate it, for example after a login or a privilege change;
+rotating on every request would break submissions from other open tabs.
 
 ### Input Sanitization & XSS Protection
 
@@ -148,10 +155,8 @@ $text = Sanitizer::plainText($html);
 // Sanitize filename (remove path traversal — both separators — plus "." / ".." names)
 $safeName = Sanitizer::filename($_FILES['file']['name']);
 
-// Check for XSS risk patterns (heuristic)
-if (Sanitizer::hasXssRisk($input)) {
-    // reject or flag
-}
+// Note: there is deliberately no "does this input look dangerous?" helper.
+// Escape on output with escape(); filter on input with stripTags().
 ```
 
 ### MiAuth Classic Implementation
@@ -350,6 +355,8 @@ if (Token::equals($storedToken, $userToken)) {
 }
 ```
 
+请求低于 `Token::MIN_LENGTH`（16 字节）的长度会抛 `SecurityException`，不再静默提升为默认值。
+
 ### CSRF 防护
 
 ```php
@@ -378,6 +385,9 @@ echo $csrf->htmlField(
     setter: fn(string $key, string $val) => $_SESSION[$key] = $val
 );
 ```
+
+`Csrf` 实例对每个存储键持有**一个长期令牌**，即 OWASP 认可的每会话模型。需要轮换时再次调用
+`generate()`，例如登录成功或权限变更之后；若每请求都轮换，会破坏其他已打开标签页的提交。
 
 ### 输入净化与 XSS 防护
 
@@ -416,10 +426,8 @@ $text = Sanitizer::plainText($html);
 // 净化文件名（去除路径穿越——两种分隔符都处理——以及 "." / ".." 这类名字）
 $safeName = Sanitizer::filename($_FILES['file']['name']);
 
-// 检查是否有 XSS 风险（启发式检测）
-if (Sanitizer::hasXssRisk($input)) {
-    // 拒绝或标记
-}
+// 注意：这里刻意不提供“这段输入是否危险”的检测函数。
+// 输出用 escape()，输入过滤用 stripTags()。
 ```
 
 ### MiAuth 经典实现

@@ -23,6 +23,17 @@ final class Token
     private const DEFAULT_LENGTH = 32;
 
     /**
+     * Shortest accepted token length in bytes.
+     *
+     * Anything shorter is rejected rather than silently widened, so a caller
+     * asking for a weak token hears about it instead of getting a strong one
+     * they did not ask for.
+     *
+     * @var int
+     */
+    public const MIN_LENGTH = 16;
+
+    /**
      * Separator used in timestamped tokens: "token:timestamp".
      *
      * @var string
@@ -32,14 +43,14 @@ final class Token
     /**
      * Generate a cryptographically secure random token.
      *
-     * @param int $length Token length in bytes (before hex encoding)
+     * @param int $length Token length in bytes (before hex encoding), at least MIN_LENGTH
      *
-     * @throws SecurityException If token generation fails
+     * @throws SecurityException If the length is below the minimum or generation fails
      */
     public static function generate(int $length = self::DEFAULT_LENGTH): string
     {
-        if ($length < 16) {
-            $length = self::DEFAULT_LENGTH;
+        if ($length < self::MIN_LENGTH) {
+            throw SecurityException::lengthBelowMinimum(self::MIN_LENGTH);
         }
 
         try {

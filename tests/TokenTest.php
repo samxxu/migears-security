@@ -34,12 +34,20 @@ final class TokenTest extends TestCase
         self::assertSame(32, strlen($token));
     }
 
-    public function testGenerateMinimumLengthEnforced(): void
+    public function testGenerateRejectsALengthBelowTheMinimum(): void
     {
-        // Length < 16 should be bumped to default (32 bytes = 64 hex chars)
-        $token = Token::generate(8);
+        // Silently widening the request would hand back a token the caller did not ask for
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('at least 16');
 
-        self::assertSame(64, strlen($token));
+        Token::generate(8);
+    }
+
+    public function testGenerateAcceptsTheMinimumLength(): void
+    {
+        $token = Token::generate(Token::MIN_LENGTH);
+
+        self::assertSame(32, strlen($token));
     }
 
     public function testGenerateIsUnique(): void

@@ -36,12 +36,17 @@ final class Csrf
 
     /**
      * @param string $tokenKey   Key used to store the token in the session/storage
-     * @param int    $tokenLength Token length in bytes (before hex encoding)
+     * @param int    $tokenLength Token length in bytes (before hex encoding), at least Token::MIN_LENGTH
+     *
+     * @throws SecurityException If the token length is below the minimum
      */
     public function __construct(
         private readonly string $tokenKey = self::DEFAULT_KEY,
         private readonly int $tokenLength = 32,
     ) {
+        if ($this->tokenLength < Token::MIN_LENGTH) {
+            throw SecurityException::lengthBelowMinimum(Token::MIN_LENGTH);
+        }
     }
 
     /**
