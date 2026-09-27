@@ -15,9 +15,10 @@
 - **Csrf** — CSRF protection with storage abstraction
 - **Sanitizer** — Input sanitization and XSS protection utilities
 - **AuthInterface** — Authentication interface, freely extensible
-- **MiAuth** — Classic Session + Cookie "remember me" implementation, optionally backed by a PSR-16 store for revocable tokens
+- **MiAuth** — Classic Session + Cookie login, with session-ID rotation on login
+- **RememberMe** — Remember-me Cookie handling: self-contained encrypted data, or opaque rotating tokens backed by a PSR-16 store
 - Depends only on PHP 8.1+, `ext-openssl`, and the PSR-16 interface package
-- All core classes are < 300 lines
+- Every core class stays within a few hundred lines (largest is RememberMe, ~380)
 - Complete unit test coverage
 
 ## Installation
@@ -289,9 +290,10 @@ MIT
 - **Csrf** — CSRF 防护，存储抽象化
 - **Sanitizer** — 输入净化与 XSS 防护工具
 - **AuthInterface** — 认证接口，可自由扩展
-- **MiAuth** — 经典 Session + Cookie "记住我" 实现，可选由 PSR-16 存储支撑以实现可撤销令牌
+- **MiAuth** — 经典 Session + Cookie 登录，登录时轮换会话 ID
+- **RememberMe** — remember-me Cookie 处理：自包含密文，或由 PSR-16 存储支撑的不透明可轮换令牌
 - 仅依赖 PHP 8.1+、`ext-openssl` 与 PSR-16 接口包
-- 所有核心类 < 300 行
+- 每个核心类都在数百行内（最大为 RememberMe，约 380 行）
 - 完整的单元测试覆盖
 
 ## 安装

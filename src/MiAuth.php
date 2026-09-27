@@ -11,15 +11,9 @@ use Psr\SimpleCache\CacheInterface;
  * MiAuth — Classic Session authentication + "remember me" Cookie implementation.
  *
  * Session/Cookie I/O is fully abstracted via callables, with no dependency on superglobals.
- *
- * Remember-me works in one of two modes:
- *
- *  - With a PSR-16 `$rememberStore`, the Cookie carries an opaque token and the server
- *    keeps the matching record keyed by that token's hash. Tokens rotate on every use
- *    and can be revoked: `logout()` drops one record, `revokeRememberTokens()` drops
- *    every device of a user at once.
- *  - Without a store, the Cookie stays self-contained encrypted data. That mode cannot
- *    be revoked and stays replayable until it expires.
+ * This class owns the session and the user; the remember-me Cookie itself is handled by
+ * RememberMe, which works either with a PSR-16 store (opaque, rotating, revocable tokens)
+ * or as self-contained encrypted data.
  *
  * @template TUser of object
  * @implements AuthInterface<TUser>
@@ -34,16 +28,11 @@ class MiAuth implements AuthInterface
     private const DEFAULT_COOKIE_NAME = '__migears_remember';
     /** @var int Default remember-me TTL in seconds (30 days) */
     private const DEFAULT_REMEMBER_TTL = 2592000;
-    /** @var int Default window in which an already-consumed token is tolerated (30 seconds) */
-    private const DEFAULT_REMEMBER_GRACE = 30;
-    /** @var int Remember-me token length in bytes before hex encoding */
-    private const REMEMBER_TOKEN_LENGTH = 32;
-    /** @var int Length of the hashed suffix in remember-me cache keys */
-    private const KEY_HASH_LENGTH = 32;
 
     /** @var TUser|null */
     private ?object $currentUser = null;
     private bool $resolved = false;
+    private readonly RememberMe $remember;
 
     /**
      * @param callable(string): ?string         $sessionGet
@@ -77,13 +66,13 @@ class MiAuth implements AuthInterface
         private readonly mixed $cookieSet,
         private readonly mixed $cookieRemove,
         private readonly mixed $userLoader,
-        private readonly string $encryptionKey = '',
+        string $encryptionKey = '',
         private readonly string $sessionKey = self::DEFAULT_SESSION_KEY,
         private readonly string $cookieName = self::DEFAULT_COOKIE_NAME,
-        private readonly int $rememberTtl = self::DEFAULT_REMEMBER_TTL,
+        int $rememberTtl = self::DEFAULT_REMEMBER_TTL,
         private readonly mixed $sessionRegenerate = null,
-        private readonly ?CacheInterface $rememberStore = null,
-        private readonly int $rememberGrace = self::DEFAULT_REMEMBER_GRACE,
+        ?CacheInterface $rememberStore = null,
+        int $rememberGrace = RememberMe::DEFAULT_GRACE,
     ) {
         self::assertCallable($this->sessionGet, 'sessionGet');
         self::assertCallable($this->sessionSet, 'sessionSet');
@@ -95,13 +84,16 @@ class MiAuth implements AuthInterface
 
         if ($this->sessionRegenerate !== null) self::assertCallable($this->sessionRegenerate, 'sessionRegenerate');
 
-        if ($this->rememberTtl < 1) {
-            throw SecurityException::invalidConfiguration('rememberTtl must be at least 1 second.');
-        }
-
-        if ($this->rememberGrace < 0) {
-            throw SecurityException::invalidConfiguration('rememberGrace cannot be negative.');
-        }
+        $this->remember = new RememberMe(
+            cookieGet: $this->cookieGet,
+            cookieSet: $this->cookieSet,
+            cookieRemove: $this->cookieRemove,
+            cookieName: $this->cookieName,
+            ttl: $rememberTtl,
+            encryptionKey: $encryptionKey,
+            store: $rememberStore,
+            grace: $rememberGrace,
+        );
     }
 
     /**
@@ -191,7 +183,7 @@ class MiAuth implements AuthInterface
                 session_regenerate_id(true);
             },
             rememberStore: $options['rememberStore'] ?? null,
-            rememberGrace: $options['rememberGrace'] ?? self::DEFAULT_REMEMBER_GRACE,
+            rememberGrace: $options['rememberGrace'] ?? RememberMe::DEFAULT_GRACE,
         );
     }
 
@@ -201,7 +193,7 @@ class MiAuth implements AuthInterface
         $userId = $this->extractUserId($user);
 
         // Validate before touching any state: a failure must not half-login the user
-        if ($remember && $this->rememberStore === null && $this->encryptionKey === '') {
+        if ($remember && !$this->remember->isEnabled()) {
             throw SecurityException::missingEncryptionKey();
         }
 
@@ -210,7 +202,7 @@ class MiAuth implements AuthInterface
         ($this->sessionSet)($this->sessionKey, $userId);
         $this->currentUser = $user;
         $this->resolved = true;
-        if ($remember) $this->setRememberCookie($userId);
+        if ($remember) $this->remember->issue($userId);
     }
 
     /**
@@ -228,12 +220,8 @@ class MiAuth implements AuthInterface
         $this->resolved = true;
 
         // The local session is already gone; what remains is making sure a copied
-        // Cookie cannot be replayed, so a failed delete is reported rather than hidden.
-        if ($this->rememberStore !== null && is_string($token) && $token !== '') {
-            if (!$this->forgetRememberRecord($token)) {
-                throw new SecurityException('Failed to revoke the stored remember-me record.');
-            }
-        }
+        // Cookie cannot be replayed, so a failed revoke is reported rather than hidden.
+        if (is_string($token) && $token !== '') $this->remember->revoke($token);
     }
 
     public function isLoggedIn(): bool
@@ -259,28 +247,15 @@ class MiAuth implements AuthInterface
             ($this->sessionRemove)($this->sessionKey);
         }
 
-        // Fall back to remember-me Cookie
+        // Fall back to the remember-me Cookie
         if ($this->tryRememberMe()) return $this->currentUser;
         return null;
     }
 
     private function tryRememberMe(): bool
     {
-        // Without a store or a key there is no way to evaluate the Cookie at all,
-        // so it is left untouched rather than deleted on a guess.
-        if ($this->rememberStore === null && $this->encryptionKey === '') return false;
-
-        $cookieValue = ($this->cookieGet)($this->cookieName);
-        if ($cookieValue === null || $cookieValue === '') return false;
-
-        $userId = $this->rememberStore !== null
-            ? $this->resolveStoredToken($cookieValue)
-            : $this->resolveEncryptedCookie($cookieValue);
-
-        if ($userId === null) {
-            ($this->cookieRemove)($this->cookieName);
-            return false;
-        }
+        $userId = $this->remember->consume();
+        if ($userId === null) return false;
 
         $user = ($this->userLoader)($userId);
         if ($user === null) {
@@ -305,79 +280,6 @@ class MiAuth implements AuthInterface
         if ($this->sessionRegenerate !== null) ($this->sessionRegenerate)();
     }
 
-    // --- Remember-me: server-side record mode (PSR-16 store) ---
-
-    /**
-     * Resolve an opaque remember-me token, rotating it on first use.
-     *
-     * @return string|null The user ID, or null when the token must not be honoured
-     */
-    private function resolveStoredToken(string $token): ?string
-    {
-        $record = $this->readRememberRecord($token);
-        if ($record === null) return null;
-
-        if ((int) $record['exp'] < time()) {
-            $this->forgetRememberRecord($token);
-            return null;
-        }
-
-        $userId = (string) $record['uid'];
-
-        // Bumping the user's epoch revokes every device at once
-        if ((int) $record['epoch'] !== $this->rememberEpoch($userId)) {
-            $this->forgetRememberRecord($token);
-            return null;
-        }
-
-        if (($record['rotated_at'] ?? null) !== null) {
-            // Already exchanged. A parallel request may legitimately still carry it,
-            // so it is honoured inside the grace window and rejected afterwards.
-            return (time() - (int) $record['rotated_at']) <= $this->rememberGrace ? $userId : null;
-        }
-
-        $this->rotateRememberToken($token, $record);
-
-        return $userId;
-    }
-
-    /**
-     * Issue a successor token and retire the presented one.
-     *
-     * Best effort by design: the presented token was valid, so a failed successor
-     * write leaves the current Cookie usable rather than logging the user out.
-     *
-     * @param array<string, mixed> $record
-     */
-    private function rotateRememberToken(string $token, array $record): void
-    {
-        $expiresAt = (int) $record['exp'];
-        $successor = Token::generate(self::REMEMBER_TOKEN_LENGTH);
-
-        $stored = $this->saveRememberRecord($successor, [
-            'uid' => (string) $record['uid'],
-            'exp' => $expiresAt,
-            'epoch' => (int) $record['epoch'],
-            'rotated_at' => null,
-        ]);
-
-        if (!$stored) return;
-
-        if ($this->rememberGrace > 0) {
-            // Keep the consumed token briefly so parallel requests survive the rotation
-            $this->saveRememberRecord($token, [
-                'uid' => (string) $record['uid'],
-                'exp' => $expiresAt,
-                'epoch' => (int) $record['epoch'],
-                'rotated_at' => time(),
-            ], $this->rememberGrace);
-        } else {
-            $this->forgetRememberRecord($token);
-        }
-
-        ($this->cookieSet)($this->cookieName, $successor, $expiresAt);
-    }
-
     /**
      * Invalidate every remember-me token of a user, on every device.
      *
@@ -388,133 +290,7 @@ class MiAuth implements AuthInterface
      */
     public function revokeRememberTokens(string $userId): void
     {
-        if ($this->rememberStore === null) {
-            throw SecurityException::invalidConfiguration(
-                'Revoking remember-me tokens requires a PSR-16 rememberStore.'
-            );
-        }
-
-        $stored = $this->rememberStore->set(
-            $this->rememberEpochKey($userId),
-            $this->rememberEpoch($userId) + 1
-        );
-
-        // A silently failed epoch write would leave every old Cookie valid
-        if ($stored !== true) {
-            throw new SecurityException('Failed to persist the remember-me epoch; no token was revoked.');
-        }
-    }
-
-    /**
-     * @return array<string, mixed>|null
-     */
-    private function readRememberRecord(string $token): ?array
-    {
-        $value = $this->rememberStore?->get($this->rememberRecordKey($token));
-
-        return is_array($value) && isset($value['uid'], $value['exp'], $value['epoch']) ? $value : null;
-    }
-
-    /**
-     * @param array<string, mixed> $record
-     *
-     * @return bool Whether the record was stored
-     */
-    private function saveRememberRecord(string $token, array $record, ?int $ttl = null): bool
-    {
-        $ttl ??= max(1, (int) $record['exp'] - time());
-
-        return $this->rememberStore?->set($this->rememberRecordKey($token), $record, $ttl) === true;
-    }
-
-    /**
-     * @return bool Whether the record is gone afterwards
-     */
-    private function forgetRememberRecord(string $token): bool
-    {
-        return $this->rememberStore?->delete($this->rememberRecordKey($token)) === true;
-    }
-
-    private function rememberEpoch(string $userId): int
-    {
-        $epoch = $this->rememberStore?->get($this->rememberEpochKey($userId));
-
-        return is_int($epoch) ? $epoch : 0;
-    }
-
-    /**
-     * Cache key for a token record.
-     *
-     * Keyed by the token's hash, and kept inside the PSR-16 key character set
-     * (letters, digits and underscores) at a length implementations accept.
-     */
-    private function rememberRecordKey(string $token): string
-    {
-        return '__migears_rem_' . substr(hash('sha256', $token), 0, self::KEY_HASH_LENGTH);
-    }
-
-    /**
-     * Cache key for a user's remember epoch.
-     *
-     * Hashed because a user ID may contain characters PSR-16 forbids in a key.
-     */
-    private function rememberEpochKey(string $userId): string
-    {
-        return '__migears_remv_' . substr(hash('sha256', $userId), 0, self::KEY_HASH_LENGTH);
-    }
-
-    // --- Remember-me: self-contained encrypted Cookie mode ---
-
-    /**
-     * Resolve a self-contained encrypted Cookie.
-     *
-     * @return string|null The user ID, or null when the Cookie must not be honoured
-     */
-    private function resolveEncryptedCookie(string $cookieValue): ?string
-    {
-        if ($this->encryptionKey === '') return null;
-
-        try {
-            $data = $this->decrypt($cookieValue, $this->encryptionKey);
-        } catch (SecurityException) {
-            return null;
-        }
-
-        $parts = json_decode($data, true);
-        if (!is_array($parts) || !isset($parts['uid'], $parts['exp'])) return null;
-        if ((int) $parts['exp'] < time()) return null;
-
-        return (string) $parts['uid'];
-    }
-
-    /** @throws SecurityException */
-    private function setRememberCookie(string $userId): void
-    {
-        $expiresAt = time() + $this->rememberTtl;
-
-        if ($this->rememberStore !== null) {
-            $token = Token::generate(self::REMEMBER_TOKEN_LENGTH);
-
-            $stored = $this->saveRememberRecord($token, [
-                'uid' => $userId,
-                'exp' => $expiresAt,
-                'epoch' => $this->rememberEpoch($userId),
-                'rotated_at' => null,
-            ]);
-
-            // A Cookie without its record could never resolve again
-            if (!$stored) throw new SecurityException('Failed to store the remember-me record.');
-
-            ($this->cookieSet)($this->cookieName, $token, $expiresAt);
-            return;
-        }
-
-        if ($this->encryptionKey === '') throw SecurityException::missingEncryptionKey();
-
-        $data = json_encode(['uid' => $userId, 'exp' => $expiresAt]);
-        if ($data === false) throw new SecurityException('Failed to encode remember-me data.');
-
-        ($this->cookieSet)($this->cookieName, $this->encrypt($data, $this->encryptionKey), $expiresAt);
+        $this->remember->revokeForUser($userId);
     }
 
     /** @throws SecurityException */
@@ -525,63 +301,5 @@ class MiAuth implements AuthInterface
         if (isset($user->id)) return (string) $user->id;
         if ($user instanceof \ArrayAccess && isset($user['id'])) return (string) $user['id'];
         throw new SecurityException('Cannot extract user ID: object must have getId(), ->id, or [\'id\'].');
-    }
-
-    // --- AES-256-CBC + HMAC encryption utilities ---
-
-    /**
-     * Derive the separate AES and MAC keys from the configured secret.
-     *
-     * Two labels keep one primitive's key out of the other: sharing a single key
-     * between the cipher and the MAC couples them for no benefit.
-     *
-     * @return array{0: string, 1: string}
-     */
-    private function deriveKeys(string $secret): array
-    {
-        return [
-            hash('sha256', 'migears-remember-enc:' . $secret, true),
-            hash('sha256', 'migears-remember-mac:' . $secret, true),
-        ];
-    }
-
-    /** @throws SecurityException */
-    private function encrypt(string $plaintext, string $key): string
-    {
-        [$encKey, $macKey] = $this->deriveKeys($key);
-
-        try {
-            $iv = random_bytes(openssl_cipher_iv_length('aes-256-cbc'));
-        } catch (\Throwable $e) {
-            throw new SecurityException('Failed to generate IV for encryption.', 0, $e);
-        }
-
-        $ciphertext = openssl_encrypt($plaintext, 'aes-256-cbc', $encKey, OPENSSL_RAW_DATA, $iv);
-        if ($ciphertext === false) throw new SecurityException('Encryption failed.');
-
-        $mac = hash_hmac('sha256', $iv . $ciphertext, $macKey, true);
-        return base64_encode($iv) . '.' . base64_encode($ciphertext) . '.' . base64_encode($mac);
-    }
-
-    /** @throws SecurityException */
-    private function decrypt(string $payload, string $key): string
-    {
-        [$encKey, $macKey] = $this->deriveKeys($key);
-
-        $parts = explode('.', $payload);
-        if (count($parts) !== 3) throw new SecurityException('Invalid encrypted payload format.');
-
-        $iv = base64_decode($parts[0], true);
-        $ciphertext = base64_decode($parts[1], true);
-        $mac = base64_decode($parts[2], true);
-        if ($iv === false || $ciphertext === false || $mac === false) throw new SecurityException('Invalid encrypted payload encoding.');
-
-        if (!hash_equals(hash_hmac('sha256', $iv . $ciphertext, $macKey, true), $mac)) {
-            throw new SecurityException('HMAC verification failed.');
-        }
-
-        $plaintext = openssl_decrypt($ciphertext, 'aes-256-cbc', $encKey, OPENSSL_RAW_DATA, $iv);
-        if ($plaintext === false) throw new SecurityException('Decryption failed.');
-        return $plaintext;
     }
 }
