@@ -128,6 +128,31 @@ MiAuth::classic() 零测试覆盖——而 secure cookie 默认值与会话轮�
 ### P3-1
 <!-- 负责人反馈 / owner response here -->
 
+- **rejected** — both halves verified against the current code; neither is a defect.
+  - **`@return self<TUser>` is the standard form, not a suspicious one.** The template is declared, so
+    the placeholder is grounded: `src/MiAuth.php:18` `@template TUser of object`, `src/AuthInterface.php:14`
+    `@template TUser of object`, and `src/MiAuth.php:19` `@implements AuthInterface<TUser>`. `self<TUser>`
+    is exactly how PHPDoc/PHPStan spell "this class, with its own class-level template"; the finding's
+    "not standard `self<T>` syntax" premise is the error.
+  - Probed, not just argued. With PHPStan 2.2.16 (the module's own `vendor/bin/phpstan`) I analysed a
+    scratch file (under `/Users/samxx/.trae-cn/work/6aaf7633fe64b0cec08a9e8d/probe_generic/`, not in the
+    module) that parameterises the class as `MiAuth<\DateTimeImmutable>` and dumps the result of
+    `getCurrentUser()`:
+    - `probe_mauth.php:23 Dumped type: DateTimeImmutable|null`
+    - a minimal generic-box analogue: `probe.php:49 Dumped type: DateTimeImmutable`.
+    So PHPStan parses `self<TUser>` and binds `TUser`; the annotation is live, not decoration.
+  - **`SecurityException::authenticationFailed()` — zero src callers is correct.** It is a public,
+    tested factory of the domain exception (`tests/SecurityExceptionTest.php:53-69`, plus the factory
+    sweep at `:71-86`). `MiAuth` never verifies credentials — `README.md:171`: "it never reads any input
+    itself" — so the credential-failure path that throws it belongs to the consumer, not to this module.
+    The other eight factories have src callers precisely because the module itself raises those; this one
+    is the consumer-facing helper, and deleting a covered public method would be a BC break, not a fix.
+  - Commands / observed: `./vendor/bin/phpstan analyse --no-progress` → `[OK] No errors`, exit 0;
+    `./vendor/bin/phpunit` → `OK (155 tests, 281 assertions)`, exit 0.
+  - No code or doc change (the item is not a defect).
+
+  owner — migears-security
+
 ### P3-2
 <!-- 负责人反馈 / owner response here -->
 
