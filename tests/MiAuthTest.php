@@ -550,4 +550,311 @@ final class MiAuthTest extends TestCase
 
         self::assertSame('7', $this->session['__migears_user_id']);
     }
+
+    // --- remember-me with a PSR-16 store ---
+
+    /**
+     * @param TestCache $cache
+     */
+    private function createStoreAuth(
+        TestCache $cache,
+        string $encryptionKey = '',
+        int $rememberTtl = 2592000,
+        int $rememberGrace = 30,
+    ): MiAuth {
+        return new MiAuth(
+            sessionGet: $this->sessionGet,
+            sessionSet: $this->sessionSet,
+            sessionRemove: $this->sessionRemove,
+            cookieGet: $this->cookieGet,
+            cookieSet: $this->cookieSet,
+            cookieRemove: $this->cookieRemove,
+            userLoader: $this->userLoader,
+            encryptionKey: $encryptionKey,
+            rememberTtl: $rememberTtl,
+            rememberStore: $cache,
+            rememberGrace: $rememberGrace,
+        );
+    }
+
+    private function recordKey(string $token): string
+    {
+        return '__migears_rem_' . substr(hash('sha256', $token), 0, 32);
+    }
+
+    public function testStoreModeIssuesAnOpaqueTokenBackedByARecord(): void
+    {
+        $cache = new TestCache();
+        $auth = $this->createStoreAuth($cache);
+
+        $auth->login($this->users['1'], remember: true);
+
+        $token = $this->cookies['__migears_remember'];
+        self::assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $token);
+        self::assertSame(1, $cache->count());
+
+        $record = $cache->get($this->recordKey($token));
+        self::assertIsArray($record);
+        self::assertSame('1', $record['uid']);
+        self::assertSame(0, $record['epoch']);
+        self::assertNull($record['rotated_at']);
+    }
+
+    public function testStoreModeDoesNotRequireAnEncryptionKey(): void
+    {
+        $cache = new TestCache();
+
+        $this->createStoreAuth($cache, encryptionKey: '')->login($this->users['1'], remember: true);
+
+        self::assertArrayHasKey('__migears_remember', $this->cookies);
+    }
+
+    public function testStoreModeRestoresTheSession(): void
+    {
+        $cache = new TestCache();
+        $this->createStoreAuth($cache)->login($this->users['1'], remember: true);
+
+        $this->session = [];
+
+        $auth = $this->createStoreAuth($cache);
+        $user = $auth->getCurrentUser();
+
+        self::assertNotNull($user);
+        self::assertSame('Alice', $user->name);
+        self::assertArrayHasKey('__migears_user_id', $this->session);
+    }
+
+    public function testStoreModeRotatesTheTokenOnEveryUse(): void
+    {
+        $cache = new TestCache();
+        $this->createStoreAuth($cache)->login($this->users['1'], remember: true);
+        $first = $this->cookies['__migears_remember'];
+
+        $this->session = [];
+        self::assertNotNull($this->createStoreAuth($cache)->getCurrentUser());
+        $second = $this->cookies['__migears_remember'];
+
+        self::assertNotSame($first, $second);
+
+        // The consumed token is kept, marked as rotated, for the grace window
+        $consumed = $cache->get($this->recordKey($first));
+        self::assertIsArray($consumed);
+        self::assertNotNull($consumed['rotated_at']);
+
+        // The successor is the one that still works
+        $this->session = [];
+        $this->cookies = ['__migears_remember' => $second];
+        self::assertSame('1', $this->createStoreAuth($cache)->getCurrentUser()?->getId());
+    }
+
+    public function testConsumedTokenIsHonouredInsideTheGraceWindow(): void
+    {
+        $cache = new TestCache();
+        $this->createStoreAuth($cache)->login($this->users['1'], remember: true);
+        $consumed = $this->cookies['__migears_remember'];
+
+        $this->session = [];
+        self::assertNotNull($this->createStoreAuth($cache)->getCurrentUser());
+
+        // A parallel request still carrying the consumed token must not be logged out
+        $this->session = [];
+        $this->cookies = ['__migears_remember' => $consumed];
+
+        self::assertSame('1', $this->createStoreAuth($cache)->getCurrentUser()?->getId());
+    }
+
+    public function testConsumedTokenIsRejectedWithAZeroGraceWindow(): void
+    {
+        $cache = new TestCache();
+        $this->createStoreAuth($cache, rememberGrace: 0)->login($this->users['1'], remember: true);
+        $consumed = $this->cookies['__migears_remember'];
+
+        $this->session = [];
+        self::assertNotNull($this->createStoreAuth($cache, rememberGrace: 0)->getCurrentUser());
+
+        $this->session = [];
+        $this->cookies = ['__migears_remember' => $consumed];
+
+        self::assertNull($this->createStoreAuth($cache, rememberGrace: 0)->getCurrentUser());
+        self::assertArrayNotHasKey('__migears_remember', $this->cookies);
+    }
+
+    public function testUnknownStoredTokenIsRejected(): void
+    {
+        $cache = new TestCache();
+        $this->cookies['__migears_remember'] = bin2hex(random_bytes(32));
+
+        self::assertNull($this->createStoreAuth($cache)->getCurrentUser());
+        self::assertArrayNotHasKey('__migears_remember', $this->cookies);
+    }
+
+    public function testExpiredStoredRecordIsRejectedAndDropped(): void
+    {
+        $cache = new TestCache();
+        $token = bin2hex(random_bytes(32));
+        $cache->set($this->recordKey($token), [
+            'uid' => '1',
+            'exp' => time() - 10,
+            'epoch' => 0,
+            'rotated_at' => null,
+        ]);
+        $this->cookies['__migears_remember'] = $token;
+
+        self::assertNull($this->createStoreAuth($cache)->getCurrentUser());
+        self::assertSame(0, $cache->count());
+    }
+
+    public function testRecordFromAStaleEpochIsRejected(): void
+    {
+        $cache = new TestCache();
+        $token = bin2hex(random_bytes(32));
+        $cache->set($this->recordKey($token), [
+            'uid' => '1',
+            'exp' => time() + 3600,
+            'epoch' => 5,
+            'rotated_at' => null,
+        ]);
+        $this->cookies['__migears_remember'] = $token;
+
+        self::assertNull($this->createStoreAuth($cache)->getCurrentUser());
+        self::assertSame(0, $cache->count());
+    }
+
+    public function testRevokeRememberTokensInvalidatesEveryDeviceOfThatUser(): void
+    {
+        $cache = new TestCache();
+        $auth = $this->createStoreAuth($cache);
+
+        $auth->login($this->users['1'], remember: true);
+        $deviceA = $this->cookies['__migears_remember'];
+        $auth->login($this->users['1'], remember: true);
+        $deviceB = $this->cookies['__migears_remember'];
+        $auth->login($this->users['2'], remember: true);
+        $otherUser = $this->cookies['__migears_remember'];
+
+        $auth->revokeRememberTokens('1');
+
+        foreach ([$deviceA, $deviceB] as $token) {
+            $this->session = [];
+            $this->cookies = ['__migears_remember' => $token];
+            self::assertNull($this->createStoreAuth($cache)->getCurrentUser());
+        }
+
+        $this->session = [];
+        $this->cookies = ['__migears_remember' => $otherUser];
+        self::assertSame('2', $this->createStoreAuth($cache)->getCurrentUser()?->getId());
+    }
+
+    public function testRevokeRememberTokensWithoutAStoreThrows(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('rememberStore');
+
+        $this->createAuth()->revokeRememberTokens('1');
+    }
+
+    public function testLogoutRevokesTheStoredRecord(): void
+    {
+        $cache = new TestCache();
+        $auth = $this->createStoreAuth($cache);
+        $auth->login($this->users['1'], remember: true);
+        $token = $this->cookies['__migears_remember'];
+
+        $auth->logout();
+
+        self::assertSame(0, $cache->count());
+
+        $this->session = [];
+        $this->cookies = ['__migears_remember' => $token];
+        self::assertNull($this->createStoreAuth($cache)->getCurrentUser());
+    }
+
+    public function testStoreModeDropsTheCookieWhenTheUserIsGone(): void
+    {
+        $cache = new TestCache();
+        $this->createStoreAuth($cache)->login($this->users['1'], remember: true);
+
+        unset($this->users['1']);
+        $this->session = [];
+
+        self::assertNull($this->createStoreAuth($cache)->getCurrentUser());
+        self::assertArrayNotHasKey('__migears_remember', $this->cookies);
+    }
+
+    public function testStoreModeSessionIsRotatedWhenRestored(): void
+    {
+        $cache = new TestCache();
+        $this->createStoreAuth($cache)->login($this->users['1'], remember: true);
+
+        $this->session = [];
+
+        $regenerated = 0;
+        $auth = new MiAuth(
+            sessionGet: $this->sessionGet,
+            sessionSet: $this->sessionSet,
+            sessionRemove: $this->sessionRemove,
+            cookieGet: $this->cookieGet,
+            cookieSet: $this->cookieSet,
+            cookieRemove: $this->cookieRemove,
+            userLoader: $this->userLoader,
+            rememberStore: $cache,
+            sessionRegenerate: function () use (&$regenerated): void {
+                $regenerated++;
+            },
+        );
+
+        self::assertNotNull($auth->getCurrentUser());
+        self::assertSame(1, $regenerated);
+    }
+
+    // --- constructor validation ---
+
+    public function testConstructorRejectsANonCallableCallback(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('sessionGet');
+
+        new MiAuth(
+            sessionGet: 'definitely-not-callable',
+            sessionSet: $this->sessionSet,
+            sessionRemove: $this->sessionRemove,
+            cookieGet: $this->cookieGet,
+            cookieSet: $this->cookieSet,
+            cookieRemove: $this->cookieRemove,
+            userLoader: $this->userLoader,
+        );
+    }
+
+    public function testConstructorRejectsANonCallableSessionRegenerate(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('sessionRegenerate');
+
+        new MiAuth(
+            sessionGet: $this->sessionGet,
+            sessionSet: $this->sessionSet,
+            sessionRemove: $this->sessionRemove,
+            cookieGet: $this->cookieGet,
+            cookieSet: $this->cookieSet,
+            cookieRemove: $this->cookieRemove,
+            userLoader: $this->userLoader,
+            sessionRegenerate: 'nope',
+        );
+    }
+
+    public function testConstructorRejectsNonPositiveRememberTtl(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('rememberTtl');
+
+        $this->createStoreAuth(new TestCache(), rememberTtl: 0);
+    }
+
+    public function testConstructorRejectsNegativeRememberGrace(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('rememberGrace');
+
+        $this->createStoreAuth(new TestCache(), rememberGrace: -1);
+    }
 }

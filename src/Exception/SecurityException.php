@@ -53,6 +53,22 @@ class SecurityException extends \RuntimeException
     }
 
     /**
+     * Create a new exception for an invalid configuration value.
+     */
+    public static function invalidConfiguration(string $reason): self
+    {
+        return new self('Invalid configuration: ' . $reason);
+    }
+
+    /**
+     * Create a new exception for a password longer than the algorithm accepts.
+     */
+    public static function passwordTooLong(int $limit): self
+    {
+        return new self('Password exceeds the ' . $limit . '-byte limit of the selected hashing algorithm.');
+    }
+
+    /**
      * Create a new exception for authentication failure.
      */
     public static function authenticationFailed(string $reason = ''): self
