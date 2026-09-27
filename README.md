@@ -2,7 +2,7 @@
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 
-> Security toolkit + MiAuth classic implementation. Zero mandatory dependencies, PHP 8.1+.
+> Security toolkit + MiAuth classic implementation. PHP 8.1+, interface-only dependencies.
 
 > **Background**: miGears is the open-source successor of **TinyGears**, a
 > self-developed PHP framework. It was renamed and open-sourced recently because
@@ -15,8 +15,8 @@
 - **Csrf** — CSRF protection with storage abstraction
 - **Sanitizer** — Input sanitization and XSS protection utilities
 - **AuthInterface** — Authentication interface, freely extensible
-- **MiAuth** — Classic Session + Cookie "remember me" implementation
-- Zero mandatory dependencies, only requires PHP 8.1+ and `ext-openssl`
+- **MiAuth** — Classic Session + Cookie "remember me" implementation, optionally backed by a PSR-16 store for revocable tokens
+- Depends only on PHP 8.1+, `ext-openssl`, and the PSR-16 interface package
 - All core classes are < 300 lines
 - Complete unit test coverage
 
@@ -29,6 +29,7 @@ composer require migears/security
 Requirements:
 - PHP ^8.1
 - ext-openssl
+- psr/simple-cache (interfaces only, used for revocable remember-me records)
 
 ## Quick Start
 
@@ -50,6 +51,11 @@ if (Password::needsRehash($hash)) {
     $newHash = Password::hash('mysecret');
 }
 ```
+
+bcrypt only takes the first 72 bytes into account, so `Password::hash()` rejects longer input with
+a `SecurityException` instead of silently truncating it — otherwise two different long passwords
+sharing a 72-byte prefix would verify against each other. Use
+`['algo' => PASSWORD_ARGON2ID]` when longer passwords must be accepted.
 
 ### Token Generation
 
@@ -116,7 +122,9 @@ echo Sanitizer::escape($userInput);
 // Strip all HTML tags
 $plain = Sanitizer::stripTags($htmlInput);
 
-// Strip tags, allow specific ones
+// Strip tags, allow specific ones — attributes on allowed tags are filtered:
+// only href/src/alt/title/width/height survive, href/src must use an allowed
+// scheme, and every on* handler, style, srcdoc and formaction is removed
 $clean = Sanitizer::stripTags($html, '<p><a><strong>');
 
 // Sanitize email
@@ -137,7 +145,7 @@ $clean = Sanitizer::string($dirty);
 // Extract plain text from HTML
 $text = Sanitizer::plainText($html);
 
-// Sanitize filename (remove path traversal, null bytes)
+// Sanitize filename (remove path traversal — both separators — plus "." / ".." names)
 $safeName = Sanitizer::filename($_FILES['file']['name']);
 
 // Check for XSS risk patterns (heuristic)
@@ -185,6 +193,33 @@ $auth = MiAuth::classic(
 );
 ```
 
+#### Revocable remember-me (PSR-16 store)
+
+Pass any PSR-16 cache — `migears/cache` qualifies — to move remember-me into a server-side
+record. The Cookie then carries an opaque token, only the token's hash is stored, the token
+rotates on every use, and revocation becomes possible:
+
+```php
+use MiGears\Security\MiAuth;
+
+$auth = MiAuth::classic(
+    userLoader: fn(string $id): ?object => User::find($id),
+    options: [
+        'rememberStore' => $cache,   // any Psr\SimpleCache\CacheInterface
+        'rememberGrace' => 30,       // seconds a consumed token is still tolerated
+    ],
+);
+
+$auth->logout();                      // drops this device's record
+$auth->revokeRememberTokens($userId); // drops every device of the user (call on password change)
+```
+
+Records live under `__migears_rem_…` (keyed by the token's hash) and the per-user epoch under
+`__migears_remv_…`; `revokeRememberTokens()` bumps that epoch, so every Cookie issued earlier
+stops resolving. The grace window keeps a just-consumed token valid for a few seconds so parallel
+requests are not logged out mid-rotation. Without a store the Cookie stays self-contained
+encrypted data and **cannot be revoked** — an encryption key is then required.
+
 ### Custom Storage
 
 MiAuth abstracts all I/O through callables and does not depend on any global variables:
@@ -202,6 +237,7 @@ $auth = new MiAuth(
     cookieRemove: fn(string $name) => $response->headers->clearCookie($name),
     userLoader: fn(string $id): ?object => User::find($id),
     encryptionKey: 'your-secret-key',
+    rememberStore: $cache,                 // optional PSR-16 store for revocable remember-me tokens
 );
 ```
 
@@ -225,7 +261,7 @@ final class JwtAuth implements AuthInterface
 ## Design Principles
 
 - **No global state** — Does not depend on superglobals like `$_SESSION` or `$_COOKIE` (except `MiAuth::classic()`, which is a convenience wrapper)
-- **Zero mandatory dependencies** — Only requires PHP 8.1+ and the openssl extension
+- **Interface-only dependencies** — Only requires PHP 8.1+, the openssl extension, and the PSR-16 interface package
 - **Minimalist API** — Each class does one thing, with a small and refined set of methods
 - **Security first** — All cryptographic operations use PHP's native CSPRNG, comparisons use `hash_equals`
 
@@ -239,7 +275,7 @@ MIT
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 
-> 安全工具集 + MiAuth 经典实现。零强制依赖，PHP 8.1+。
+> 安全工具集 + MiAuth 经典实现。PHP 8.1+，依赖仅限接口包。
 
 ## 特性
 
@@ -248,8 +284,8 @@ MIT
 - **Csrf** — CSRF 防护，存储抽象化
 - **Sanitizer** — 输入净化与 XSS 防护工具
 - **AuthInterface** — 认证接口，可自由扩展
-- **MiAuth** — 经典 Session + Cookie "记住我" 实现
-- 零强制依赖，仅需 PHP 8.1+ 和 `ext-openssl`
+- **MiAuth** — 经典 Session + Cookie "记住我" 实现，可选由 PSR-16 存储支撑以实现可撤销令牌
+- 仅依赖 PHP 8.1+、`ext-openssl` 与 PSR-16 接口包
 - 所有核心类 < 300 行
 - 完整的单元测试覆盖
 
@@ -262,6 +298,7 @@ composer require migears/security
 要求：
 - PHP ^8.1
 - ext-openssl
+- psr/simple-cache（仅接口，用于可撤销的 remember-me 记录）
 
 ## 快速开始
 
@@ -283,6 +320,10 @@ if (Password::needsRehash($hash)) {
     $newHash = Password::hash('mysecret');
 }
 ```
+
+bcrypt 只取前 72 字节，因此 `Password::hash()` 对超长输入直接抛 `SecurityException`，而不是静默截断——
+否则前 72 字节相同的两个不同长密码会互相验证通过。若确需接受更长密码，请使用
+`['algo' => PASSWORD_ARGON2ID]`。
 
 ### 令牌生成
 
@@ -349,7 +390,9 @@ echo Sanitizer::escape($userInput);
 // 去除所有 HTML 标签
 $plain = Sanitizer::stripTags($htmlInput);
 
-// 去除标签，保留指定的
+// 去除标签，保留指定的——被保留标签的属性也会被过滤：只保留
+// href/src/alt/title/width/height，href/src 需使用允许的协议，
+// 所有 on* 事件、style、srcdoc、formaction 一律移除
 $clean = Sanitizer::stripTags($html, '<p><a><strong>');
 
 // 净化邮箱
@@ -370,7 +413,7 @@ $clean = Sanitizer::string($dirty);
 // 从 HTML 中提取纯文本
 $text = Sanitizer::plainText($html);
 
-// 净化文件名（去除路径穿越、空字节）
+// 净化文件名（去除路径穿越——两种分隔符都处理——以及 "." / ".." 这类名字）
 $safeName = Sanitizer::filename($_FILES['file']['name']);
 
 // 检查是否有 XSS 风险（启发式检测）
@@ -417,6 +460,31 @@ $auth = MiAuth::classic(
 );
 ```
 
+#### 可撤销的 remember-me（PSR-16 存储）
+
+传入任意 PSR-16 缓存（`migears/cache` 即符合）即可把 remember-me 变为服务端记录：Cookie 只携带
+不透明令牌，服务端只存令牌哈希，每次使用都会轮换，并且可以撤销：
+
+```php
+use MiGears\Security\MiAuth;
+
+$auth = MiAuth::classic(
+    userLoader: fn(string $id): ?object => User::find($id),
+    options: [
+        'rememberStore' => $cache,   // 任意 Psr\SimpleCache\CacheInterface
+        'rememberGrace' => 30,       // 已消费令牌仍被容忍的秒数
+    ],
+);
+
+$auth->logout();                      // 撤销本设备的记录
+$auth->revokeRememberTokens($userId); // 撤销该用户全部设备（改密时调用）
+```
+
+记录存于 `__migears_rem_…`（以令牌哈希为键），每用户的 epoch 存于 `__migears_remv_…`；
+`revokeRememberTokens()` 递增该 epoch，于是此前签发的所有 Cookie 立即失效。宽限期让刚被消费的令牌
+在数秒内仍然有效，避免轮换过程中并发请求被登出。不注入存储时，Cookie 仍是自包含密文，
+**无法撤销**——此时必须提供加密密钥。
+
 ### 自定义存储
 
 MiAuth 通过 callable 抽象所有 I/O，不依赖任何全局变量：
@@ -434,6 +502,7 @@ $auth = new MiAuth(
     cookieRemove: fn(string $name) => $response->headers->clearCookie($name),
     userLoader: fn(string $id): ?object => User::find($id),
     encryptionKey: 'your-secret-key',
+    rememberStore: $cache,                 // 可选的 PSR-16 存储，用于可撤销的 remember-me 令牌
 );
 ```
 
@@ -457,7 +526,7 @@ final class JwtAuth implements AuthInterface
 ## 设计原则
 
 - **无全局状态** — 不依赖 `$_SESSION`、`$_COOKIE` 等超全局变量（`MiAuth::classic()` 除外，它是便捷封装）
-- **零强制依赖** — 仅需 PHP 8.1+ 和 openssl 扩展
+- **依赖仅限接口** — 仅需 PHP 8.1+、openssl 扩展与 PSR-16 接口包
 - **极简 API** — 每个类只做一件事，方法数量少而精
 - **安全优先** — 所有加密操作使用 PHP 原生 CSPRNG，比较使用 `hash_equals`
 

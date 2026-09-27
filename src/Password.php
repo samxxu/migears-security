@@ -29,17 +29,33 @@ final class Password
     private const COST = 12;
 
     /**
+     * Longest password bcrypt takes into account.
+     *
+     * bcrypt hashes at most 72 bytes and ignores the rest, so two different
+     * long passwords sharing a 72-byte prefix would verify against each other.
+     * Longer input is rejected instead of silently truncated.
+     *
+     * @var int
+     */
+    private const BCRYPT_MAX_BYTES = 72;
+
+    /**
      * Hash a plain-text password.
      *
      * @param string $password Plain-text password
      * @param array<string, mixed> $options Hashing options (e.g. ['cost' => 12]).
      *                                      Pass ['algo' => PASSWORD_ARGON2ID] to override the default algorithm.
      *
-     * @throws SecurityException If the algorithm or options are rejected
+     * @throws SecurityException If the algorithm or options are rejected, or the
+     *                          password exceeds the bcrypt limit
      */
     public static function hash(string $password, array $options = []): string
     {
         [$algo, $options] = self::splitAlgo($options);
+
+        if ($algo === PASSWORD_BCRYPT && strlen($password) > self::BCRYPT_MAX_BYTES) {
+            throw SecurityException::passwordTooLong(self::BCRYPT_MAX_BYTES);
+        }
 
         try {
             return password_hash($password, $algo, $options);

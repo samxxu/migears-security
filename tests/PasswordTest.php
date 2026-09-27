@@ -85,12 +85,47 @@ final class PasswordTest extends TestCase
         self::assertTrue(Password::verify($password, $hash2));
     }
 
-    public function testVeryLongPassword(): void
+    public function testVeryLongPasswordIsRejectedInsteadOfTruncated(): void
     {
-        $longPassword = str_repeat('a', 1000);
-        $hash = Password::hash($longPassword);
+        // bcrypt ignores everything past 72 bytes, so accepting a longer password
+        // would let two different passwords verify against each other
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('72-byte');
 
-        self::assertTrue(Password::verify($longPassword, $hash));
+        Password::hash(str_repeat('a', 1000));
+    }
+
+    public function testHashAcceptsExactlyTheBcryptLimit(): void
+    {
+        $password = str_repeat('a', 72);
+
+        self::assertTrue(Password::verify($password, Password::hash($password)));
+    }
+
+    public function testHashRejectsAPasswordOneByteOverTheLimit(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('72-byte');
+
+        Password::hash(str_repeat('a', 73));
+    }
+
+    public function testHashRejectsAMultibytePasswordOverTheByteLimit(): void
+    {
+        // 25 three-byte characters = 75 bytes
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('72-byte');
+
+        Password::hash(str_repeat('密', 25));
+    }
+
+    public function testHashAllowsLongPasswordsWithArgon2(): void
+    {
+        if (!defined('PASSWORD_ARGON2ID')) self::markTestSkipped('argon2id is not available in this PHP build.');
+
+        $password = str_repeat('a', 100);
+
+        self::assertTrue(Password::verify($password, Password::hash($password, ['algo' => PASSWORD_ARGON2ID])));
     }
 
     public function testHashHonorsAlgoOverride(): void
