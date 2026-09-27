@@ -88,44 +88,49 @@ being silently widened to the default.
 
 ### CSRF Protection
 
+`Csrf` never reads a superglobal either: the user-supplied token is passed in as an argument, and
+the storage is whatever you inject. The per-session model OWASP allows is one long-lived token per
+storage key:
+
 ```php
 use MiGears\Security\Csrf;
 use MiGears\Security\Exception\SecurityException;
 
+// Storage can be anything — here a plain array held by reference; in a real app
+// it would be your own session/cache, passed in from the caller
+$storage = [];
+$setter  = fn(string $key, string $val) => $storage[$key] = $val;
+$getter  = fn(string $key): ?string => $storage[$key] ?? null;
+
 $csrf = new Csrf();
 
-// Generate token (stored in session)
-$token = $csrf->generate(
-    setter: fn(string $key, string $val) => $_SESSION[$key] = $val
-);
+// Generate token (stored through the injected setter)
+$token = $csrf->generate(setter: $setter);
 
-// Validate
+// Validate — the submitted token arrives as a parameter, not from $_POST
 try {
-    $csrf->validate(
-        userToken: $_POST['_csrf_token'] ?? '',
-        getter: fn(string $key) => $_SESSION[$key] ?? null
-    );
+    $csrf->validate(userToken: $submittedToken, getter: $getter);
 } catch (SecurityException $e) {
     // CSRF validation failed
 }
 
 // Quick output of HTML hidden field
-echo $csrf->htmlField(
-    setter: fn(string $key, string $val) => $_SESSION[$key] = $val
-);
+echo $csrf->htmlField(setter: $setter);
 ```
 
-A `Csrf` instance holds one long-lived token per storage key — the per-session model OWASP allows.
-Call `generate()` again when you want to rotate it, for example after a login or a privilege change;
-rotating on every request would break submissions from other open tabs.
+Call `generate()` again when you want to rotate the token, for example after a login or a
+privilege change; rotating on every request would break submissions from other open tabs.
 
 ### Input Sanitization & XSS Protection
+
+Every `Sanitizer` call takes the dirty input as a parameter and cleans it internally — no method
+reads a superglobal, so the phone, the shell, a test, and the network all feed it the same way:
 
 ```php
 use MiGears\Security\Sanitizer;
 
 // Escape for HTML output (always use for user input)
-echo Sanitizer::escape($userInput);
+echo Sanitizer::escape($rawInput);
 
 // Strip all HTML tags
 $plain = Sanitizer::stripTags($htmlInput);
@@ -135,17 +140,17 @@ $plain = Sanitizer::stripTags($htmlInput);
 // scheme, and every on* handler, style, srcdoc and formaction is removed
 $clean = Sanitizer::stripTags($html, '<p><a><strong>');
 
-// Sanitize email
-$email = Sanitizer::email($_POST['email']); // returns null if invalid
+// Sanitize email (each $raw… is the caller-supplied value)
+$email = Sanitizer::email($rawEmail); // returns null if invalid
 
 // Sanitize URL (default: http/https/ftp only)
-$url = Sanitizer::url($_POST['website']); // returns null if invalid
+$url = Sanitizer::url($rawUrl); // returns null if invalid
 
 // Sanitize integer
-$id = Sanitizer::int($_GET['id']);
+$id = Sanitizer::int($rawId);
 
 // Sanitize float
-$price = Sanitizer::float($_POST['price']);
+$price = Sanitizer::float($rawPrice);
 
 // Clean string (remove control chars, trim)
 $clean = Sanitizer::string($dirty);
@@ -154,7 +159,7 @@ $clean = Sanitizer::string($dirty);
 $text = Sanitizer::plainText($html);
 
 // Sanitize filename (remove path traversal — both separators — plus "." / ".." names)
-$safeName = Sanitizer::filename($_FILES['file']['name']);
+$safeName = Sanitizer::filename($rawFileName);
 
 // Note: there is deliberately no "does this input look dangerous?" helper.
 // Escape on output with escape(); filter on input with stripTags().
@@ -162,23 +167,35 @@ $safeName = Sanitizer::filename($_FILES['file']['name']);
 
 ### MiAuth Classic Implementation
 
-The simplest way, using PHP native Session + Cookie directly:
+`MiAuth` is a framework-agnostic authentication core: it never reads any input itself. Session
+and Cookie I/O arrive through the callables you inject, and every other value is passed in as a
+method argument. The data may come from `$_POST`, an HTTP `Request` object, the CLI, or a test —
+the calls on `MiAuth` stay identical:
 
 ```php
 use MiGears\Security\MiAuth;
+use MiGears\Security\Password;
 
+// classic() supplies the session/Cookie adapters on top of PHP's native
+// $_SESSION/setcookie; the userLoader hits your Manager (the service layer,
+// never the DAO directly)
 $auth = MiAuth::classic(
-    userLoader: fn(string $id): ?object => User::find($id),
-    encryptionKey: 'your-secret-key-for-remember-me',
+    userLoader: fn(string $id): ?object => $users->findById($id),
 );
 
-// Login
-$user = User::findByEmail($_POST['email']);
-if ($user && Password::verify($_POST['password'], $user->passwordHash)) {
-    $auth->login($user, remember: isset($_POST['remember']));
+// Login — the values are given, not read: email/password/remember arrive
+// from the caller, so MiAuth never touches a superglobal or a Request
+function login(MiAuth $auth, UserManager $users, string $email, string $password, bool $remember): ?User
+{
+    $user = $users->findByEmail($email);
+    if ($user === null || !Password::verify($password, $user->passwordHash)) {
+        return null;
+    }
+    $auth->login($user, remember: $remember);
+    return $user;
 }
 
-// Check login status
+// Check login status and the current user
 if ($auth->isLoggedIn()) {
     $user = $auth->getCurrentUser();
 }
@@ -187,29 +204,27 @@ if ($auth->isLoggedIn()) {
 $auth->logout();
 ```
 
-The remember-me Cookie is issued with `HttpOnly`, `SameSite=Lax` and `Secure`, and the session
-ID is rotated on every login (`session_regenerate_id(true)`) to prevent session fixation.
-Pass `cookieSecure => false` only when developing over plain HTTP locally:
+Login failure and the session state are MiAuth's whole concern; where the input came from is the
+caller's. The remember-me Cookie is issued with `HttpOnly`, `SameSite=Lax` and `Secure`, and the
+session ID is rotated on every login (`session_regenerate_id(true)`) to prevent session fixation.
+Pass `cookieSecure => false` in `options` only when developing over plain HTTP locally:
 
 ```php
 $auth = MiAuth::classic(
-    userLoader: fn(string $id): ?object => User::find($id),
-    encryptionKey: 'your-secret-key',
+    userLoader: fn(string $id): ?object => $users->findById($id),
     options: ['cookieSecure' => false],
 );
 ```
 
 #### Revocable remember-me (PSR-16 store)
 
-Pass any PSR-16 cache — `migears/cache` qualifies — to move remember-me into a server-side
-record. The Cookie then carries an opaque token, only the token's hash is stored, the token
-rotates on every use, and revocation becomes possible:
+Pass any PSR-16 cache — `migears/cache` qualifies — in `options` to move remember-me into a
+server-side record. The Cookie then carries an opaque token, only the token's hash is stored,
+the token rotates on every use, and revocation becomes possible:
 
 ```php
-use MiGears\Security\MiAuth;
-
 $auth = MiAuth::classic(
-    userLoader: fn(string $id): ?object => User::find($id),
+    userLoader: fn(string $id): ?object => $users->findById($id),
     options: [
         'rememberStore' => $cache,   // any Psr\SimpleCache\CacheInterface
         'rememberGrace' => 30,       // seconds a consumed token is still tolerated
@@ -233,6 +248,8 @@ MiAuth abstracts all I/O through callables and does not depend on any global var
 ```php
 use MiGears\Security\MiAuth;
 
+$users = $container->get(UserManager::class); // your Manager, passed in from the caller
+
 $auth = new MiAuth(
     sessionGet: fn(string $key): ?string => $redis->get("session:$sid:$key"),
     sessionSet: fn(string $key, string $val) => $redis->set("session:$sid:$key", $val),
@@ -241,7 +258,7 @@ $auth = new MiAuth(
     cookieGet: fn(string $name): ?string => $request->cookies->get($name),
     cookieSet: fn(string $name, string $val, int $exp) => $response->headers->setCookie(...),
     cookieRemove: fn(string $name) => $response->headers->clearCookie($name),
-    userLoader: fn(string $id): ?object => User::find($id),
+    userLoader: fn(string $id): ?object => $users->findById($id),
     encryptionKey: 'your-secret-key',
     rememberStore: $cache,                 // optional PSR-16 store for revocable remember-me tokens
 );
@@ -361,43 +378,48 @@ if (Token::equals($storedToken, $userToken)) {
 
 ### CSRF 防护
 
+`Csrf` 同样从不读取任何 superglobal：用户提交的令牌以参数传入，存储则是你注入的任意实现。
+OWASP 认可的每会话模型，就是每个存储键持有**一个长期令牌**：
+
 ```php
 use MiGears\Security\Csrf;
 use MiGears\Security\Exception\SecurityException;
 
+// 存储可以是任意实现——这里用按引用持有的普通数组演示；真实应用中它是你自己的
+// session/缓存，由调用方注入
+$storage = [];
+$setter  = fn(string $key, string $val) => $storage[$key] = $val;
+$getter  = fn(string $key): ?string => $storage[$key] ?? null;
+
 $csrf = new Csrf();
 
-// 生成令牌（存入 session）
-$token = $csrf->generate(
-    setter: fn(string $key, string $val) => $_SESSION[$key] = $val
-);
+// 生成令牌（经注入的 setter 存储）
+$token = $csrf->generate(setter: $setter);
 
-// 验证
+// 验证——提交的令牌作为参数传入，而非来自 $_POST
 try {
-    $csrf->validate(
-        userToken: $_POST['_csrf_token'] ?? '',
-        getter: fn(string $key) => $_SESSION[$key] ?? null
-    );
+    $csrf->validate(userToken: $submittedToken, getter: $getter);
 } catch (SecurityException $e) {
     // CSRF 验证失败
 }
 
 // 快捷输出 HTML 隐藏域
-echo $csrf->htmlField(
-    setter: fn(string $key, string $val) => $_SESSION[$key] = $val
-);
+echo $csrf->htmlField(setter: $setter);
 ```
 
-`Csrf` 实例对每个存储键持有**一个长期令牌**，即 OWASP 认可的每会话模型。需要轮换时再次调用
-`generate()`，例如登录成功或权限变更之后；若每请求都轮换，会破坏其他已打开标签页的提交。
+需要轮换时再次调用 `generate()`，例如登录成功或权限变更之后；若每请求都轮换，
+会破坏其他已打开标签页的提交。
 
 ### 输入净化与 XSS 防护
+
+每次 `Sanitizer` 调用都把脏输入作为参数传入，并在内部完成清洗——没有任何方法读取 superglobal，
+因此手机、shell、测试与网络都以相同方式喂给它们：
 
 ```php
 use MiGears\Security\Sanitizer;
 
 // HTML 转义输出（用户输入务必用这个）
-echo Sanitizer::escape($userInput);
+echo Sanitizer::escape($rawInput);
 
 // 去除所有 HTML 标签
 $plain = Sanitizer::stripTags($htmlInput);
@@ -407,17 +429,17 @@ $plain = Sanitizer::stripTags($htmlInput);
 // 所有 on* 事件、style、srcdoc、formaction 一律移除
 $clean = Sanitizer::stripTags($html, '<p><a><strong>');
 
-// 净化邮箱
-$email = Sanitizer::email($_POST['email']); // 无效返回 null
+// 净化邮箱（每个 $raw… 都是调用方提供的值）
+$email = Sanitizer::email($rawEmail); // 无效返回 null
 
 // 净化 URL（默认只允许 http/https/ftp）
-$url = Sanitizer::url($_POST['website']); // 无效返回 null
+$url = Sanitizer::url($rawUrl); // 无效返回 null
 
 // 净化整数
-$id = Sanitizer::int($_GET['id']);
+$id = Sanitizer::int($rawId);
 
 // 净化浮点数
-$price = Sanitizer::float($_POST['price']);
+$price = Sanitizer::float($rawPrice);
 
 // 净化字符串（去除控制字符、首尾空白）
 $clean = Sanitizer::string($dirty);
@@ -426,7 +448,7 @@ $clean = Sanitizer::string($dirty);
 $text = Sanitizer::plainText($html);
 
 // 净化文件名（去除路径穿越——两种分隔符都处理——以及 "." / ".." 这类名字）
-$safeName = Sanitizer::filename($_FILES['file']['name']);
+$safeName = Sanitizer::filename($rawFileName);
 
 // 注意：这里刻意不提供“这段输入是否危险”的检测函数。
 // 输出用 escape()，输入过滤用 stripTags()。
@@ -434,23 +456,33 @@ $safeName = Sanitizer::filename($_FILES['file']['name']);
 
 ### MiAuth 经典实现
 
-最简单的方式，直接使用 PHP 原生 Session + Cookie：
+`MiAuth` 是一个 framework-agnostic 的认证核心：它自己从不读取任何输入。Session 与 Cookie 的
+I/O 通过你注入的 callable 传入，其余值都作为方法参数传入。数据可能来自 `$_POST`、HTTP
+`Request` 对象、CLI 或测试——对 `MiAuth` 的调用方式始终一致：
 
 ```php
 use MiGears\Security\MiAuth;
+use MiGears\Security\Password;
 
+// classic() 在 PHP 原生 $_SESSION/setcookie 之上提供 Session/Cookie 适配；
+// userLoader 触碰你的 Manager（服务层，绝不直接接触 DAO）
 $auth = MiAuth::classic(
-    userLoader: fn(string $id): ?object => User::find($id),
-    encryptionKey: 'your-secret-key-for-remember-me',
+    userLoader: fn(string $id): ?object => $users->findById($id),
 );
 
-// 登录
-$user = User::findByEmail($_POST['email']);
-if ($user && Password::verify($_POST['password'], $user->passwordHash)) {
-    $auth->login($user, remember: isset($_POST['remember']));
+// 登录——值是“传入”而非“读取”：email/password/remember 来自调用方，
+// 因此 MiAuth 从不直接触碰 superglobal 或 Request
+function login(MiAuth $auth, UserManager $users, string $email, string $password, bool $remember): ?User
+{
+    $user = $users->findByEmail($email);
+    if ($user === null || !Password::verify($password, $user->passwordHash)) {
+        return null;
+    }
+    $auth->login($user, remember: $remember);
+    return $user;
 }
 
-// 检查登录状态
+// 检查登录状态与当前用户
 if ($auth->isLoggedIn()) {
     $user = $auth->getCurrentUser();
 }
@@ -459,27 +491,25 @@ if ($auth->isLoggedIn()) {
 $auth->logout();
 ```
 
-remember-me Cookie 会带上 `HttpOnly`、`SameSite=Lax` 与 `Secure`，且每次登录都会轮换会话 ID
-（`session_regenerate_id(true)`）以防会话固定。仅在本地 HTTP 开发时传入 `cookieSecure => false`：
+登录成败与会话状态是 MiAuth 的全部关注点；输入来自哪里是调用方的事。remember-me Cookie 会带上
+`HttpOnly`、`SameSite=Lax` 与 `Secure`，且每次登录都会轮换会话 ID（`session_regenerate_id(true)`）
+以防会话固定。仅在本地 HTTP 开发时在 `options` 里传入 `cookieSecure => false`：
 
 ```php
 $auth = MiAuth::classic(
-    userLoader: fn(string $id): ?object => User::find($id),
-    encryptionKey: 'your-secret-key',
+    userLoader: fn(string $id): ?object => $users->findById($id),
     options: ['cookieSecure' => false],
 );
 ```
 
 #### 可撤销的 remember-me（PSR-16 存储）
 
-传入任意 PSR-16 缓存（`migears/cache` 即符合）即可把 remember-me 变为服务端记录：Cookie 只携带
-不透明令牌，服务端只存令牌哈希，每次使用都会轮换，并且可以撤销：
+在 `options` 里传入任意 PSR-16 缓存（`migears/cache` 即符合），即可把 remember-me 变为服务端记录：
+Cookie 只携带不透明令牌，服务端只存令牌哈希，每次使用都会轮换，并且可以撤销：
 
 ```php
-use MiGears\Security\MiAuth;
-
 $auth = MiAuth::classic(
-    userLoader: fn(string $id): ?object => User::find($id),
+    userLoader: fn(string $id): ?object => $users->findById($id),
     options: [
         'rememberStore' => $cache,   // 任意 Psr\SimpleCache\CacheInterface
         'rememberGrace' => 30,       // 已消费令牌仍被容忍的秒数
@@ -502,6 +532,8 @@ MiAuth 通过 callable 抽象所有 I/O，不依赖任何全局变量：
 ```php
 use MiGears\Security\MiAuth;
 
+$users = $container->get(UserManager::class); // 你的 Manager，由调用方传入
+
 $auth = new MiAuth(
     sessionGet: fn(string $key): ?string => $redis->get("session:$sid:$key"),
     sessionSet: fn(string $key, string $val) => $redis->set("session:$sid:$key", $val),
@@ -510,7 +542,7 @@ $auth = new MiAuth(
     cookieGet: fn(string $name): ?string => $request->cookies->get($name),
     cookieSet: fn(string $name, string $val, int $exp) => $response->headers->setCookie(...),
     cookieRemove: fn(string $name) => $response->headers->clearCookie($name),
-    userLoader: fn(string $id): ?object => User::find($id),
+    userLoader: fn(string $id): ?object => $users->findById($id),
     encryptionKey: 'your-secret-key',
     rememberStore: $cache,                 // 可选的 PSR-16 存储，用于可撤销的 remember-me 令牌
 );

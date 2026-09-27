@@ -13,17 +13,16 @@ use MiGears\Security\Exception\SecurityException;
  * through plain callables, so the caller controls persistence
  * (session, cache, etc.).
  *
- * Usage:
+ * Usage (storage is whatever you inject — here a plain array held by reference):
  *   $csrf = new Csrf('_csrf_token', 32);
  *
- *   $token = $csrf->generate(
- *       fn(string $key, string $value) => $_SESSION[$key] = $value
- *   );
+ *   $storage = [];
+ *   $setter  = fn(string $key, string $value) => $storage[$key] = $value;
+ *   $getter  = fn(string $key): ?string => $storage[$key] ?? null;
  *
- *   $csrf->validate(
- *       $_POST['_csrf_token'] ?? '',
- *       fn(string $key): ?string => $_SESSION[$key] ?? null
- *   );
+ *   $token = $csrf->generate($setter);
+ *
+ *   $csrf->validate($submittedToken, $getter);
  */
 final class Csrf
 {
