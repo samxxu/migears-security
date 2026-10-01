@@ -17,20 +17,22 @@ Legend — **P0** functional or security · **P1** documentation that fails when
 
 | | |
 |---|---|
-| Unsettled | P0 0 · P1 0 · P2 0 · P3 4 · other 1 |
-| Settled | 0 of 5 |
-| Waiting on the owner | `P3-2`, `P3-3`, `P3-4` |
-| Waiting on the reviewer | `P3-1`, `G2` |
+| Unsettled | P0 0 · P1 0 · P2 0 · P3 4 · other 0 |
+| Settled | 3 of 7 |
+| Waiting on the owner | `P3-5`, `P3-6` |
 | Waiting on the coordinator | _nothing_ |
-| Deferred, owing nobody | _nothing_ |
+| Waiting on the reviewer | `P3-1` |
+| Deferred, owing nobody | `P3-2` |
 
 | id | level | status | title |
 |---|---|---|---|
 | [`P3-1`](issues/P3-1.md) | P3 | **rejected** | `@return self<TUser>` remains a suspicious generic form (not standard … |
-| [`P3-2`](issues/P3-2.md) | P3 | **open** | `MiAuth::classic()` — the convenience wrapper that hides the session … |
-| [`P3-3`](issues/P3-3.md) | P3 | **open** | `classic()` reads its `$options` key by key with `??`, so a misspelled … |
-| [`P3-4`](issues/P3-4.md) | P3 | **open** | `Token::generateWithTtl()` does not validate the TTL: `time() + … |
-| [`G2`](issues/G2.md) | - | **fixed** | Strict flags: `phpunit.xml.dist` currently sets `failOnWarning`, … |
+| [`P3-2`](issues/P3-2.md) | P3 | **deferred** | `MiAuth::classic()` — the convenience wrapper that hides the session … |
+| [`P3-3`](issues/P3-3.md) | P3 | **verified** | `classic()` reads its `$options` key by key with `??`, so a misspelled … |
+| [`P3-4`](issues/P3-4.md) | P3 | **verified** | `Token::generateWithTtl()` does not validate the TTL: `time() + … |
+| [`P3-5`](issues/P3-5.md) | P3 | **open** | Csrf::validate() throws the same csrfValidationFailed() exception for … |
+| [`P3-6`](issues/P3-6.md) | P3 | **open** | Password::verify() does not reject or handle passwords longer than the … |
+| [`G2`](issues/G2.md) | - | **verified** | Strict flags: `phpunit.xml.dist` currently sets `failOnWarning`, … |
 
 ## Unclosed
 
@@ -39,17 +41,16 @@ highest severity first. `waiting on` is the party who acts next, read from that 
 
 | | |
 |---|---|
-| Unclosed | **5** of 5 |
-| By status | `open` 3 · `rejected` 1 · `fixed` 1 |
-| Waiting on | owner 3 · reviewer 2 |
+| Unclosed | **4** of 7 |
+| By status | `open` 2 · `rejected` 1 · `deferred` 1 |
+| Waiting on | owner 2 · reviewer 1 · - 1 |
 
 | level | item | status | waiting on | title |
 |---|---|---|---|---|
 | **P3** | [`P3-1`](issues/P3-1.md) | `rejected` | reviewer | `@return self<TUser>` remains a suspicious generic form (not standard … |
-| **P3** | [`P3-2`](issues/P3-2.md) | `open` | owner | `MiAuth::classic()` — the convenience wrapper that hides the session … |
-| **P3** | [`P3-3`](issues/P3-3.md) | `open` | owner | `classic()` reads its `$options` key by key with `??`, so a misspelled … |
-| **P3** | [`P3-4`](issues/P3-4.md) | `open` | owner | `Token::generateWithTtl()` does not validate the TTL: `time() + … |
-| **-** | [`G2`](issues/G2.md) | `fixed` | reviewer | Strict flags: `phpunit.xml.dist` currently sets `failOnWarning`, … |
+| **P3** | [`P3-2`](issues/P3-2.md) | `deferred` | - | `MiAuth::classic()` — the convenience wrapper that hides the session … |
+| **P3** | [`P3-5`](issues/P3-5.md) | `open` | owner | Csrf::validate() throws the same csrfValidationFailed() exception for … |
+| **P3** | [`P3-6`](issues/P3-6.md) | `open` | owner | Password::verify() does not reject or handle passwords longer than the … |
 
 ## Verdict
 
@@ -90,20 +91,22 @@ MiAuth::classic() has only 3 tests (options validation + one real-session login)
 
 | | |
 |---|---|
-| 未了结 | P0 0 · P1 0 · P2 0 · P3 4 · 其他 1 |
-| 已了结 | 0 / 5 |
-| 等负责人 | `P3-2`, `P3-3`, `P3-4` |
-| 等评审方 | `P3-1`, `G2` |
+| 未了结 | P0 0 · P1 0 · P2 0 · P3 4 · 其他 0 |
+| 已了结 | 3 / 7 |
+| 等模块主 | `P3-5`, `P3-6` |
 | 等协调人 | _无_ |
-| 已暂缓，不欠谁 | _无_ |
+| 等评审方 | `P3-1` |
+| 已暂缓，不欠谁 | `P3-2` |
 
 | id | 级别 | 状态 | 标题 |
 |---|---|---|---|
 | [`P3-1`](issues/P3-1.md) | P3 | **rejected** | @return self<TUser> 仍是可疑的泛型写法（不是标准的 self<T> … |
-| [`P3-2`](issues/P3-2.md) | P3 | **open** | MiAuth::classic() 这条隐藏会话超全局、设置 secure cookie 默认值并完成轮换的便捷封装，完全没有测试（grep … |
-| [`P3-3`](issues/P3-3.md) | P3 | **open** | classic() 逐键用 ?? 取 $options，拼错的键会静默退回默认值——正是本模块立志要消除的那类静默选项丢弃。 |
-| [`P3-4`](issues/P3-4.md) | P3 | **open** | Token::generateWithTtl() 不校验 TTL：time() + $ttlSeconds，因此 0 … |
-| [`G2`](issues/G2.md) | - | **fixed** | 严格开关：`phpunit.xml.dist` 目前已开启 … |
+| [`P3-2`](issues/P3-2.md) | P3 | **deferred** | MiAuth::classic() 这条隐藏会话超全局、设置 secure cookie 默认值并完成轮换的便捷封装，完全没有测试（grep … |
+| [`P3-3`](issues/P3-3.md) | P3 | **verified** | classic() 逐键用 ?? 取 $options，拼错的键会静默退回默认值——正是本模块立志要消除的那类静默选项丢弃。 |
+| [`P3-4`](issues/P3-4.md) | P3 | **verified** | Token::generateWithTtl() 不校验 TTL：time() + $ttlSeconds，因此 0 … |
+| [`P3-5`](issues/P3-5.md) | P3 | **open** | Csrf::validate() 对「无存储令牌」和「令牌不匹配」两种情况抛出相同的 csrfValidationFailed() … |
+| [`P3-6`](issues/P3-6.md) | P3 | **open** | Password::verify() 未拒绝或处理超过 bcrypt 72 字节限制的密码——直接传给 … |
+| [`G2`](issues/G2.md) | - | **verified** | 严格开关：`phpunit.xml.dist` 目前已开启 … |
 
 ## 未关闭
 
@@ -112,17 +115,16 @@ MiAuth::classic() has only 3 tests (options validation + one real-session login)
 
 | | |
 |---|---|
-| 未关闭 | **5** / 5 |
-| 按状态 | `open` 3 · `rejected` 1 · `fixed` 1 |
-| 等在谁 | 负责人 3 · 评审方 2 |
+| 未关闭 | **4** / 7 |
+| 按状态 | `open` 2 · `rejected` 1 · `deferred` 1 |
+| 等在谁 | 模块主 2 · 评审方 1 · - 1 |
 
 | 级别 | 条目 | 状态 | 等在谁 | 标题 |
 |---|---|---|---|---|
 | **P3** | [`P3-1`](issues/P3-1.md) | `rejected` | 评审方 | @return self<TUser> 仍是可疑的泛型写法（不是标准的 self<T> … |
-| **P3** | [`P3-2`](issues/P3-2.md) | `open` | 负责人 | MiAuth::classic() 这条隐藏会话超全局、设置 secure cookie 默认值并完成轮换的便捷封装，完全没有测试（grep … |
-| **P3** | [`P3-3`](issues/P3-3.md) | `open` | 负责人 | classic() 逐键用 ?? 取 $options，拼错的键会静默退回默认值——正是本模块立志要消除的那类静默选项丢弃。 |
-| **P3** | [`P3-4`](issues/P3-4.md) | `open` | 负责人 | Token::generateWithTtl() 不校验 TTL：time() + $ttlSeconds，因此 0 … |
-| **-** | [`G2`](issues/G2.md) | `fixed` | 评审方 | 严格开关：`phpunit.xml.dist` 目前已开启 … |
+| **P3** | [`P3-2`](issues/P3-2.md) | `deferred` | - | MiAuth::classic() 这条隐藏会话超全局、设置 secure cookie 默认值并完成轮换的便捷封装，完全没有测试（grep … |
+| **P3** | [`P3-5`](issues/P3-5.md) | `open` | 模块主 | Csrf::validate() 对「无存储令牌」和「令牌不匹配」两种情况抛出相同的 csrfValidationFailed() … |
+| **P3** | [`P3-6`](issues/P3-6.md) | `open` | 模块主 | Password::verify() 未拒绝或处理超过 bcrypt 72 字节限制的密码——直接传给 … |
 
 ## 结论
 
