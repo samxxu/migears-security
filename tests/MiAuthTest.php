@@ -196,6 +196,83 @@ final class MiAuthTest extends TestCase
         self::assertSame('1', $_SESSION['__migears_user_id'] ?? null);
     }
 
+    /**
+     * classic() hardens PHP's own session Cookie, not only the remember-me one.
+     * The flags live on the request's session, so this needs the same isolated
+     * process as the real-session test.
+     *
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testClassicHardensTheNativeSessionCookie(): void
+    {
+        $users = $this->users;
+        $auth = MiAuth::classic(
+            userLoader: static function (string $id) use ($users): ?TestUser {
+                return $users[$id] ?? null;
+            },
+        );
+
+        // Touching the session through classic() starts it and applies the flags
+        $auth->login($users['1']);
+
+        $params = session_get_cookie_params();
+        self::assertTrue($params['secure'], 'the session cookie must be Secure by default');
+        self::assertTrue($params['httponly'], 'the session cookie must be HttpOnly');
+        self::assertSame('Lax', $params['samesite']);
+        self::assertSame('/', $params['path']);
+    }
+
+    /**
+     * The documented local-HTTP escape hatch: cookieSecure => false drops Secure
+     * but must not touch HttpOnly or SameSite.
+     *
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testClassicCanDisableTheSecureSessionFlagForLocalHttp(): void
+    {
+        $users = $this->users;
+        $auth = MiAuth::classic(
+            userLoader: static function (string $id) use ($users): ?TestUser {
+                return $users[$id] ?? null;
+            },
+            options: ['cookieSecure' => false],
+        );
+
+        $auth->login($users['1']);
+
+        $params = session_get_cookie_params();
+        self::assertFalse($params['secure']);
+        self::assertTrue($params['httponly']);
+        self::assertSame('Lax', $params['samesite']);
+    }
+
+    /**
+     * The convenience wrapper wires the real session_regenerate_id(true) callable
+     * in place of the injected one, so login() must actually rotate the session id.
+     *
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
+    public function testClassicRotatesTheRealSessionIdOnLogin(): void
+    {
+        $users = $this->users;
+        $auth = MiAuth::classic(
+            userLoader: static function (string $id) use ($users): ?TestUser {
+                return $users[$id] ?? null;
+            },
+        );
+
+        $auth->login($users['1']);
+        $first = session_id();
+        self::assertNotSame('', $first);
+
+        $auth->login($users['1']);
+
+        self::assertNotSame($first, session_id(), 'login() must rotate the session id against fixation');
+    }
+
     public function testLoginStoresUserIdInSession(): void
     {
         $auth = $this->createAuth();

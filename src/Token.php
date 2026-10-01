@@ -34,7 +34,7 @@ final class Token
     public const MIN_LENGTH = 16;
 
     /**
-     * Separator used in timestamped tokens: "token:timestamp".
+     * Separator used in timestamped tokens: "token.timestamp".
      *
      * @var string
      */

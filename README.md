@@ -19,7 +19,22 @@
 - **RememberMe** — Remember-me Cookie handling: self-contained encrypted data, or opaque rotating tokens backed by a PSR-16 store
 - Depends only on PHP 8.1+, `ext-openssl`, and the PSR-16 interface package
 - Every core class stays within a few hundred lines (largest is RememberMe, ~380)
-- Complete unit test coverage
+- Extensive unit test coverage
+
+## Boundaries
+
+**In scope**
+
+- The six concerns, one class each: `Password` (hash / verify / rehash), `Token` (CSPRNG generation, TTL timestamped tokens, timing-safe comparison), `Csrf` (token generate / validate / HTML hidden field), `Sanitizer` (escape, stripTags, email / url / int / float / string / plainText / filename), `AuthInterface` + `MiAuth` (session + cookie login), and `RememberMe` (remember-me cookie); PSR-4 root `MiGears\Security`, errors raised as `SecurityException`.
+- `MiAuth::classic()` convenience adapters over PHP's native `$_SESSION` / `setcookie`: session-ID rotation on login, and remember-me cookies carrying `HttpOnly` / `SameSite=Lax` / `Secure`.
+- All I/O through injected callables; runtime dependencies are only PHP 8.1+, `ext-openssl` and the PSR-16 interface package (no global state).
+
+**Not in scope (by design)**
+
+- Bearer / native-client token authentication — access/refresh issuance, rotation, replay detection and revocation belong to `migears/security-token-auth`; here `Token` is only low-level generation and verification (`parse()` does not compare against a stored value — that is the caller's job), and `RememberMe` only handles the browser remember-me cookie.
+- Persisting the session / cache backend — `MiAuth` and `Csrf` read and write only through injected callables; where the data lives (a PSR-16 store such as `migears/cache`, your session backend) and the cookie flags on a generic `MiAuth` are the caller's decision.
+- User lookup and the identity source — `userLoader` is supplied by the caller (the documented convention is to reach your Manager, not the DAO: `migears/manager` / `migears/dao`); the user object must itself expose `getId()` / `->id` / `['id']`.
+- Full HTML purification — `Sanitizer` is explicitly "not a full HTML purifier"; it only strips tags, escapes output and sanitizes common input types.
 
 ## Installation
 
@@ -316,7 +331,22 @@ MIT
 - **RememberMe** — remember-me Cookie 处理：自包含密文，或由 PSR-16 存储支撑的不透明可轮换令牌
 - 仅依赖 PHP 8.1+、`ext-openssl` 与 PSR-16 接口包
 - 每个核心类都在数百行内（最大为 RememberMe，约 380 行）
-- 完整的单元测试覆盖
+- 充分的单元测试覆盖
+
+## 边界
+
+**范围内**
+
+- 六个关注点各占一个类：`Password`（哈希/验证/重哈希）、`Token`（CSPRNG 生成、TTL 时间戳令牌、时序安全比较）、`Csrf`（令牌生成/校验/HTML 隐藏域）、`Sanitizer`（escape、stripTags、email/url/int/float/string/plainText/filename 净化）、`AuthInterface` + `MiAuth`（Session + Cookie 登录）、`RememberMe`（remember-me Cookie）；PSR-4 根为 `MiGears\Security`，错误统一抛 `SecurityException`。
+- `MiAuth::classic()` 在 PHP 原生 `$_SESSION`/`setcookie` 之上的便捷适配：登录时轮换会话 ID，remember-me Cookie 带 `HttpOnly`/`SameSite=Lax`/`Secure`。
+- 所有 I/O 都走注入的 callable，运行时依赖仅 PHP 8.1+、`ext-openssl` 与 PSR-16 接口包（无全局状态）。
+
+**范围外（刻意不做）**
+
+- Bearer / 原生客户端令牌认证 —— access/refresh 令牌签发、轮换、重放检测与撤销属于 `migears/security-token-auth`；本模块的 `Token` 只是底层生成与校验（`parse()` 不与已存值比对，比对由调用方负责），`RememberMe` 只处理浏览器 remember-me Cookie。
+- Session / 缓存后端的持久化 —— `MiAuth`、`Csrf` 只通过注入的 callable 读写，数据存在哪里（`migears/cache` 之类的 PSR-16 存储、你的会话后端）以及通用 `MiAuth` 上的 Cookie 标志由调用方决定。
+- 用户查询与身份来源 —— `userLoader` 由调用方提供（文档约定触碰 Manager 层而非 DAO，即 `migears/manager` / `migears/dao`）；用户对象须自行具备 `getId()` / `->id` / `['id']`。
+- 完整的 HTML 净化 —— `Sanitizer` 明确「不是完整 HTML purifier」，只做标签剥离、输出转义与常见输入类型的净化。
 
 ## 安装
 
