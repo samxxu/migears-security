@@ -1,6 +1,6 @@
 # migears/security
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Version](https://img.shields.io/badge/version-2.3.0-blue)
 
 > Security toolkit + MiAuth classic implementation. PHP 8.1+, interface-only dependencies.
 
@@ -319,7 +319,7 @@ MIT
 
 # migears/security
 
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Version](https://img.shields.io/badge/version-2.3.0-blue)
 
 > 安全工具集 + MiAuth 经典实现。PHP 8.1+，依赖仅限接口包。
 

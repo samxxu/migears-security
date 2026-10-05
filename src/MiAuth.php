@@ -20,7 +20,7 @@ use Psr\SimpleCache\CacheInterface;
  */
 class MiAuth implements AuthInterface
 {
-    public const VERSION = '2.0.0';
+    public const VERSION = '2.3.0';
 
     /** @var string Default session key for the user id */
     private const DEFAULT_SESSION_KEY = '__migears_user_id';
