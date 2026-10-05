@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 350" width="100%" height="auto" role="img" aria-label="把 migears/security 接进 migears/web：在组合根注册，在资源 before 钩子解析身份">
+  <style>
+    :root {
+      color-scheme: light;
+      --surface: #F7F7F8;
+      --surface-muted: #EFEFF2;
+      --text: #171717;
+      --text-muted: #52525B;
+      --border: rgba(23,23,23,0.12);
+      --brand: #0FDC78;
+      --brand-soft: #E5FFF2;
+      --brand-text: #004D26;
+      --font-sans: "SF Pro Text","PingFang SC",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      --font-mono: "SF Mono",Menlo,Consolas,monospace;
+      --weight-regular: 400;
+      --weight-medium: 500;
+      --text-caption: 12px;
+      --text-body: 14px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --surface: #171717;
+        --surface-muted: #262626;
+        --text: #E5E5E5;
+        --text-muted: #A1A1AA;
+        --border: rgba(229,229,229,0.12);
+        --brand: #32F08C;
+        --brand-soft: #004D26;
+        --brand-text: #E5FFF2;
+      }
+    }
+    .tt { fill: var(--text); font: 500 var(--text-body) var(--font-sans); }
+    .th { fill: var(--text); font: 500 var(--text-body) var(--font-sans); }
+    .ts { fill: var(--text-muted); font: 400 var(--text-caption) var(--font-sans); }
+    .tc { fill: var(--text); font: 400 var(--text-caption) var(--font-mono); }
+    .arrB { stroke: var(--brand); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .node { fill: var(--surface); stroke: var(--border); }
+    .nodeBrand { fill: var(--brand-soft); stroke: var(--brand); }
+    .div { stroke: var(--border); stroke-width: 1; }
+    .cap { fill: var(--surface); stroke: var(--border); }
+  </style>
+  <defs>
+    <marker id="arrB" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L7 4 L1 7 Z" fill="var(--brand)"/></marker>
+  </defs>
+
+  <text class="tt" x="360" y="34" text-anchor="middle">把 migears/security 接进 migears/web</text>
+
+  <rect class="node" x="40" y="64" width="280" height="210" rx="12"/>
+  <text class="th" x="60" y="92">组合根</text>
+  <text class="ts" x="60" y="110">bootstrap · 只跑一次</text>
+  <line class="div" x1="60" y1="122" x2="300" y2="122"/>
+  <text class="tc" x="60" y="150">MiRest 即 PSR-11 容器</text>
+  <text class="tc" x="60" y="174">set(LoggerInterface::class, …)</text>
+  <text class="tc" x="60" y="198">set(WebSessionAuth::class, …)</text>
+  <text class="tc" x="60" y="222">├ userLoader → Manager</text>
+  <text class="tc" x="60" y="246">└ encryptionKey · rememberStore</text>
+
+  <rect class="nodeBrand" x="400" y="64" width="280" height="210" rx="12"/>
+  <text class="th" x="420" y="92" fill="var(--brand-text)">每次请求</text>
+  <text class="ts" x="420" y="110" fill="var(--brand-text)">在资源内部</text>
+  <line class="div" x1="420" y1="122" x2="660" y2="122"/>
+  <text class="tc" x="420" y="150" fill="var(--brand-text)">before(Request) 最先执行</text>
+  <text class="tc" x="420" y="174" fill="var(--brand-text)">WebSessionAuth-&gt;user()</text>
+  <text class="tc" x="420" y="198" fill="var(--brand-text)">此时身份已就绪</text>
+  <text class="tc" x="420" y="222" fill="var(--brand-text)">GET() / POST() 处理器</text>
+
+  <path class="arrB" d="M320 169 H400" marker-end="url(#arrB)"/>
+  <rect class="cap" x="324" y="145" width="72" height="20" rx="8"/>
+  <text class="ts" x="360" y="159" text-anchor="middle">容器</text>
+
+  <text class="ts" x="360" y="304" text-anchor="middle">MiAuth::classic() 用原生 session/setcookie，必须在任何输出之前执行 ——</text>
+  <text class="ts" x="360" y="324" text-anchor="middle">这正是身份解析放在 before()、绝不放在响应体写出之后的原因。</text>
+</svg>

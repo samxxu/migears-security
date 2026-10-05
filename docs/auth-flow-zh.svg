@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" width="100%" height="auto" role="img" aria-label="MiAuth 生命周期：login 写状态，getCurrentUser 读状态，logout 清除并撤销">
+  <style>
+    :root {
+      color-scheme: light;
+      --surface: #F7F7F8;
+      --surface-muted: #EFEFF2;
+      --text: #171717;
+      --text-muted: #52525B;
+      --border: rgba(23,23,23,0.12);
+      --brand: #0FDC78;
+      --brand-soft: #E5FFF2;
+      --brand-text: #004D26;
+      --font-sans: "SF Pro Text","PingFang SC",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      --font-mono: "SF Mono",Menlo,Consolas,monospace;
+      --weight-regular: 400;
+      --weight-medium: 500;
+      --text-caption: 12px;
+      --text-body: 14px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --surface: #171717;
+        --surface-muted: #262626;
+        --text: #E5E5E5;
+        --text-muted: #A1A1AA;
+        --border: rgba(229,229,229,0.12);
+        --brand: #32F08C;
+        --brand-soft: #004D26;
+        --brand-text: #E5FFF2;
+      }
+    }
+    .tt { fill: var(--text); font: 500 var(--text-body) var(--font-sans); }
+    .th { fill: var(--text); font: 500 var(--text-body) var(--font-sans); }
+    .ts { fill: var(--text-muted); font: 400 var(--text-caption) var(--font-sans); }
+    .tc { fill: var(--text); font: 400 var(--text-caption) var(--font-mono); }
+    .node { fill: var(--surface); stroke: var(--border); }
+    .div { stroke: var(--border); stroke-width: 1; }
+  </style>
+
+  <text class="tt" x="360" y="34" text-anchor="middle">MiAuth：登录生命周期</text>
+
+  <rect class="node" x="40" y="64" width="200" height="190" rx="12"/>
+  <text class="th" x="60" y="92">① login($user, $remember)</text>
+  <text class="ts" x="60" y="110">密码已由调用方校验</text>
+  <line class="div" x1="60" y1="122" x2="220" y2="122"/>
+  <text class="tc" x="60" y="148">轮换 Session ID</text>
+  <text class="tc" x="60" y="170">写 Session[uid]</text>
+  <text class="tc" x="60" y="192">签发 remember Cookie</text>
+
+  <rect class="node" x="260" y="64" width="200" height="190" rx="12"/>
+  <text class="th" x="280" y="92">② getCurrentUser()</text>
+  <text class="ts" x="280" y="110">两段查找</text>
+  <line class="div" x1="280" y1="122" x2="440" y2="122"/>
+  <text class="tc" x="280" y="148">Session 命中 → 返回用户</text>
+  <text class="tc" x="280" y="170">未命中 → 读 Cookie</text>
+  <text class="tc" x="280" y="192">有效 → 重建 Session</text>
+  <text class="tc" x="280" y="214">否则 → null</text>
+
+  <rect class="node" x="480" y="64" width="200" height="190" rx="12"/>
+  <text class="th" x="500" y="92">③ logout()</text>
+  <text class="ts" x="500" y="110">清除并撤销</text>
+  <line class="div" x1="500" y1="122" x2="660" y2="122"/>
+  <text class="tc" x="500" y="148">清 Session 键</text>
+  <text class="tc" x="500" y="170">删 Cookie</text>
+  <text class="tc" x="500" y="192">撤销服务端记录</text>
+
+  <text class="ts" x="360" y="286" text-anchor="middle">remember-me 有 PSR-16 存储：令牌轮换，且可撤销</text>
+  <text class="ts" x="360" y="306" text-anchor="middle">无存储：自包含密文，无法撤销</text>
+</svg>

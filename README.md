@@ -8,6 +8,9 @@
 > self-developed PHP framework. It was renamed and open-sourced recently because
 > the name *TinyGears* is already taken in the open-source community.
 
+> **Tutorial**: new to the module, or wiring it into `migears/web`? Read
+> [docs/tutorial.md](docs/tutorial.md) — it builds the mental model first, then walks a full integration.
+
 ## Features
 
 - **Password** — Password hashing and verification (bcrypt, based on `password_hash`)
@@ -319,6 +322,9 @@ MIT
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
 
 > 安全工具集 + MiAuth 经典实现。PHP 8.1+，依赖仅限接口包。
+
+> **教程**：初次使用，或要把它接进 `migears/web`？请读
+> [docs/tutorial.md](docs/tutorial.md) —— 先建立心智模型，再走完整套集成。
 
 ## 特性
 

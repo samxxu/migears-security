@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" width="100%" height="auto" role="img" aria-label="migears/security：值以参数传入，存储经注入的 callable 读写">
+  <style>
+    :root {
+      color-scheme: light;
+      --surface: #F7F7F8;
+      --surface-muted: #EFEFF2;
+      --text: #171717;
+      --text-muted: #52525B;
+      --border: rgba(23,23,23,0.12);
+      --brand: #0FDC78;
+      --brand-soft: #E5FFF2;
+      --brand-text: #004D26;
+      --font-sans: "SF Pro Text","PingFang SC",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      --weight-regular: 400;
+      --weight-medium: 500;
+      --text-caption: 12px;
+      --text-body: 14px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        color-scheme: dark;
+        --surface: #171717;
+        --surface-muted: #262626;
+        --text: #E5E5E5;
+        --text-muted: #A1A1AA;
+        --border: rgba(229,229,229,0.12);
+        --brand: #32F08C;
+        --brand-soft: #004D26;
+        --brand-text: #E5FFF2;
+      }
+    }
+    .th { fill: var(--text); font: 500 var(--text-body) var(--font-sans); }
+    .ts { fill: var(--text-muted); font: 400 var(--text-caption) var(--font-sans); }
+    .arr { stroke: var(--text-muted); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .brandPath { stroke: var(--brand); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; fill: none; }
+    .node { fill: var(--surface); stroke: var(--border); }
+    .nodeMuted { fill: var(--surface-muted); stroke: var(--border); }
+    .nodeBrand { fill: var(--brand-soft); stroke: var(--brand); }
+    .box { fill: var(--surface); stroke: var(--border); stroke-dasharray: 6 6; }
+  </style>
+  <defs>
+    <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L7 4 L1 7 Z" fill="var(--text-muted)"/></marker>
+    <marker id="arrB" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto"><path d="M1 1 L7 4 L1 7 Z" fill="var(--brand)"/></marker>
+  </defs>
+
+  <text class="th" x="115" y="72" text-anchor="middle">调用方</text>
+  <text class="ts" x="115" y="90" text-anchor="middle">值作为参数传入</text>
+  <text class="th" x="605" y="72" text-anchor="middle">存储 / 后端</text>
+  <text class="ts" x="605" y="90" text-anchor="middle">经 callable 注入</text>
+
+  <rect class="box" x="228" y="56" width="264" height="232" rx="12"/>
+  <text class="th" x="360" y="84" text-anchor="middle">migears/security</text>
+  <text class="ts" x="360" y="104" text-anchor="middle">无全局状态 · 纯逻辑</text>
+
+  <rect class="nodeMuted" x="244" y="130" width="108" height="36" rx="8"/>
+  <text class="ts" x="298" y="153" text-anchor="middle" fill="var(--text)">Password</text>
+  <rect class="nodeMuted" x="368" y="130" width="108" height="36" rx="8"/>
+  <text class="ts" x="422" y="153" text-anchor="middle" fill="var(--text)">Token</text>
+
+  <rect class="nodeMuted" x="244" y="176" width="108" height="36" rx="8"/>
+  <text class="ts" x="298" y="199" text-anchor="middle" fill="var(--text)">Csrf</text>
+  <rect class="nodeMuted" x="368" y="176" width="108" height="36" rx="8"/>
+  <text class="ts" x="422" y="199" text-anchor="middle" fill="var(--text)">Sanitizer</text>
+
+  <rect class="nodeBrand" x="244" y="222" width="108" height="36" rx="8"/>
+  <text class="ts" x="298" y="245" text-anchor="middle" fill="var(--brand-text)">MiAuth</text>
+  <rect class="nodeBrand" x="368" y="222" width="108" height="36" rx="8"/>
+  <text class="ts" x="422" y="245" text-anchor="middle" fill="var(--brand-text)">RememberMe</text>
+
+  <rect class="node" x="40" y="134" width="150" height="44" rx="8"/>
+  <text class="th" x="115" y="153" text-anchor="middle">请求值</text>
+  <text class="ts" x="115" y="170" text-anchor="middle">password · token</text>
+
+  <rect class="node" x="40" y="188" width="150" height="44" rx="8"/>
+  <text class="th" x="115" y="207" text-anchor="middle">脏输入</text>
+  <text class="ts" x="115" y="224" text-anchor="middle">HTML · URL · 文件</text>
+
+  <rect class="node" x="40" y="242" width="150" height="44" rx="8"/>
+  <text class="th" x="115" y="261" text-anchor="middle">user 对象</text>
+  <text class="ts" x="115" y="278" text-anchor="middle">login() 入参</text>
+
+  <rect class="node" x="530" y="106" width="150" height="44" rx="8"/>
+  <text class="th" x="605" y="125" text-anchor="middle">Session 后端</text>
+  <text class="ts" x="605" y="142" text-anchor="middle">数组 / Redis</text>
+
+  <rect class="node" x="530" y="154" width="150" height="44" rx="8"/>
+  <text class="th" x="605" y="173" text-anchor="middle">Cookie 存储</text>
+  <text class="ts" x="605" y="190" text-anchor="middle">浏览器</text>
+
+  <rect class="node" x="530" y="202" width="150" height="44" rx="8"/>
+  <text class="th" x="605" y="221" text-anchor="middle">PSR-16 缓存</text>
+  <text class="ts" x="605" y="238" text-anchor="middle">remember 记录</text>
+
+  <rect class="node" x="530" y="250" width="150" height="44" rx="8"/>
+  <text class="th" x="605" y="269" text-anchor="middle">Manager</text>
+  <text class="ts" x="605" y="286" text-anchor="middle">userLoader</text>
+
+  <path class="arr" d="M190 156 H228" marker-end="url(#arr)"/>
+  <path class="arr" d="M190 210 H228" marker-end="url(#arr)"/>
+  <path class="arr" d="M190 264 H228" marker-end="url(#arr)"/>
+
+  <path class="brandPath" d="M530 128 H492" marker-end="url(#arrB)"/>
+  <path class="brandPath" d="M530 176 H492" marker-end="url(#arrB)"/>
+  <path class="brandPath" d="M530 224 H492" marker-end="url(#arrB)"/>
+  <path class="brandPath" d="M530 272 H492" marker-end="url(#arrB)"/>
+</svg>
